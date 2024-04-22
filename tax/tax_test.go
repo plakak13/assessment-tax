@@ -7,6 +7,7 @@ func TestCalculate(t *testing.T) {
 		name          string
 		expect        float64
 		finalIncome   float64
+		wht           float64
 		taxDeductions []TaxDeduction
 		taxRate       TaxRate
 	}
@@ -15,6 +16,7 @@ func TestCalculate(t *testing.T) {
 			name:        "with donation",
 			expect:      29000.0,
 			finalIncome: 440000.0,
+			wht:         0.0,
 			taxDeductions: []TaxDeduction{
 				{
 					MaxDeductionAmount: 100000.0,
@@ -31,8 +33,9 @@ func TestCalculate(t *testing.T) {
 		},
 		{
 			name:        "with k-reciept",
-			expect:      39000.0,
+			expect:      4000.0,
 			finalIncome: 440000.0,
+			wht:         25000.0,
 			taxDeductions: []TaxDeduction{
 				{
 					MaxDeductionAmount: 100000.0,
@@ -51,7 +54,7 @@ func TestCalculate(t *testing.T) {
 
 	for _, val := range tests {
 		t.Run(val.name, func(t *testing.T) {
-			got := calculate(val.finalIncome, val.taxRate, val.taxDeductions)
+			got := calculateTaxPayable(val.finalIncome, val.wht, val.taxRate)
 
 			if got != val.expect {
 				t.Errorf("Expect %.1f but got %.1f", val.expect, got)
@@ -93,7 +96,7 @@ func TestValidation(t *testing.T) {
 			},
 		},
 		{
-			name:   "with holding tax is 7000.0",
+			name:   "with holding tax is 25000.0",
 			expect: true,
 			taxDeductions: []TaxDeduction{
 				{
@@ -106,7 +109,7 @@ func TestValidation(t *testing.T) {
 			},
 			taxCalculation: TaxCalculation{
 				TotalIncome:    500000.0,
-				WithHoldingTax: 7000.0,
+				WithHoldingTax: 25000.0,
 				Allowances: []Allowance{
 					{
 						AllowanceType: "donation",
