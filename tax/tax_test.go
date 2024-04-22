@@ -127,5 +127,22 @@ func TestValidation(t *testing.T) {
 			t.Errorf("Expect %v but got %v", v.expect, got)
 		}
 	}
+}
 
+func TestMaxDeduct(t *testing.T) {
+	tds := []TaxDeduction{
+		{MaxDeductionAmount: 60000, TaxAllowanceType: "personal"},
+		{MaxDeductionAmount: 0, TaxAllowanceType: "donation"},
+	}
+	alls := []Allowance{
+		{AllowanceType: "donation", Amount: 0},
+	}
+
+	got := maxDeduct(tds, alls)
+
+	expected := 60000.0
+
+	if got != expected {
+		t.Errorf("maxDeduct result = %v; want %v", got, expected)
+	}
 }
