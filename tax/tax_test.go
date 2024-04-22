@@ -2,89 +2,127 @@ package tax
 
 import "testing"
 
-// import (
-// 	"testing"
-// )
-
-// type MockTax struct {
-// 	taxrate      TaxRate
-// 	taxdeduction []TaxDeduction
-// 	err          error
-// }
-
-// func (s MockTax) TaxDeductionByType([]string) ([]TaxDeduction, error) {
-// 	return s.taxdeduction, s.err
-// }
-
-// func (s MockTax) TaxRates(float64) (TaxRate, error) {
-// 	return s.taxrate, s.err
-// }
-
-// func TestGetTaxDeduction(t *testing.T) {
-// 	t.Run("dection", func(t *testing.T) {
-// 		mt := MockTax{
-// 			taxdeduction: []TaxDeduction{
-// 				// 	{
-// 				// 		MaxDeductionAmount: 100000.00,
-// 				// 		DefaultAmount:      0.00,
-// 				// 		AdminOverrideMax:   0.00,
-// 				// 		MinAmount:          0.00,
-// 				// 		TaxAllowanceType:   "donation",
-// 				// 	},
-// 				// 	{
-// 				// 		MaxDeductionAmount: 50000.00,
-// 				// 		DefaultAmount:      50000.00,
-// 				// 		AdminOverrideMax:   100000.00,
-// 				// 		MinAmount:          0.00,
-// 				// 		TaxAllowanceType:   "k-reciept",
-// 				// 	},
-// 			},
-// 			err: nil,
-// 		}
-// 		h := New(mt)
-
-// 		td, err := h.store.TaxDeductionByType([]string{"donation", "k-reciept"})
-// 		if err != nil {
-// 			t.Errorf("expect tax deduction but got %v", err)
-// 		}
-
-// 		if len(td) != len(mt.taxdeduction) {
-// 			t.Errorf("unexpected length of tax deductions: got %d, want %d", len(td), len(mt.taxdeduction))
-// 		}
-
-// 		emptyResult, err := h.store.TaxDeductionByType([]string{})
-// 		if err != nil {
-// 			t.Errorf("Unexpected error: %v", err)
-// 		}
-// 		if len(emptyResult) != 0 {
-// 			t.Errorf("Expected empty result, got %d rows", len(emptyResult))
-// 		}
-// 	})
-// }
-
-func TestCaluate(t *testing.T) {
-	taxD := []TaxDeduction{
+func TestCalculate(t *testing.T) {
+	type test struct {
+		name          string
+		expect        float64
+		finalIncome   float64
+		taxDeductions []TaxDeduction
+		taxRate       TaxRate
+	}
+	tests := []test{
 		{
-			MaxDeductionAmount: 100000.00,
-			DefaultAmount:      0.00,
-			AdminOverrideMax:   0.00,
-			MinAmount:          0.00,
-			TaxAllowanceType:   "donation",
+			name:        "with donation",
+			expect:      29000.0,
+			finalIncome: 440000.0,
+			taxDeductions: []TaxDeduction{
+				{
+					MaxDeductionAmount: 100000.0,
+					DefaultAmount:      0.0,
+					AdminOverrideMax:   0.0,
+					MinAmount:          0.0,
+					TaxAllowanceType:   "donation",
+				},
+			},
+			taxRate: TaxRate{
+				LowerBoundIncome: 150001,
+				TaxRate:          10,
+			},
 		},
-		// {
-		// 	MaxDeductionAmount: 50000.00,
-		// 	DefaultAmount:      50000.00,
-		// 	AdminOverrideMax:   100000.00,
-		// 	MinAmount:          0.00,
-		// 	TaxAllowanceType:   "k-reciept",
-		// },
+		{
+			name:        "with k-reciept",
+			expect:      39000.0,
+			finalIncome: 440000.0,
+			taxDeductions: []TaxDeduction{
+				{
+					MaxDeductionAmount: 100000.0,
+					DefaultAmount:      50000.0,
+					AdminOverrideMax:   50000.0,
+					MinAmount:          0.00,
+					TaxAllowanceType:   "k-reciept",
+				},
+			},
+			taxRate: TaxRate{
+				LowerBoundIncome: 150001,
+				TaxRate:          10,
+			},
+		},
 	}
-	got := calculate(440000.0, TaxRate{
-		LowerBoundIncome: 150001,
-		TaxRate:          10,
-	}, taxD)
 
-	if got != 29000.0 {
-		t.Errorf("Expect 290000.0 but got %.1f", got)
+	for _, val := range tests {
+		t.Run(val.name, func(t *testing.T) {
+			got := calculate(val.finalIncome, val.taxRate, val.taxDeductions)
+
+			if got != val.expect {
+				t.Errorf("Expect %.1f but got %.1f", val.expect, got)
+			}
+		})
 	}
+}
+
+func TestValidation(t *testing.T) {
+
+	type test struct {
+		name           string
+		expect         bool
+		taxDeductions  []TaxDeduction
+		taxCalculation TaxCalculation
+	}
+	tests := []test{
+		{
+			name:   "with holding tax is 0.0",
+			expect: false,
+			taxDeductions: []TaxDeduction{
+				{
+					MaxDeductionAmount: 100000.0,
+					DefaultAmount:      0.0,
+					AdminOverrideMax:   0.0,
+					MinAmount:          0.0,
+					TaxAllowanceType:   "donation",
+				},
+			},
+			taxCalculation: TaxCalculation{
+				TotalIncome:    500000.0,
+				WithHoldingTax: 0.0,
+				Allowances: []Allowance{
+					{
+						AllowanceType: "donation",
+						Amount:        0.0,
+					},
+				},
+			},
+		},
+		{
+			name:   "with holding tax is 7000.0",
+			expect: true,
+			taxDeductions: []TaxDeduction{
+				{
+					MaxDeductionAmount: 100000.0,
+					DefaultAmount:      0.0,
+					AdminOverrideMax:   0.0,
+					MinAmount:          0.0,
+					TaxAllowanceType:   "donation",
+				},
+			},
+			taxCalculation: TaxCalculation{
+				TotalIncome:    500000.0,
+				WithHoldingTax: 7000.0,
+				Allowances: []Allowance{
+					{
+						AllowanceType: "donation",
+						Amount:        0.0,
+					},
+				},
+			},
+		},
+	}
+
+	for _, v := range tests {
+		got := validation(v.taxDeductions, v.taxCalculation)
+
+		if got != v.expect {
+			t.Errorf("Expect %v but got %v", v.expect, got)
+		}
+	}
+
 }
