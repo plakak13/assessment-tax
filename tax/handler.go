@@ -49,21 +49,7 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 
 	deduct := payload.TotalIncome
 
-	var maxDeduct float64
-	for _, td := range taxDeductions {
-		if td.TaxAllowanceType == "personal" {
-			maxDeduct += td.MaxDeductionAmount
-		}
-		for _, pay := range payload.Allowances {
-			if td.TaxAllowanceType == pay.AllowanceType {
-				if td.MaxDeductionAmount >= pay.Amount {
-					maxDeduct += pay.Amount
-				} else {
-					maxDeduct += td.MaxDeductionAmount
-				}
-			}
-		}
-	}
+	maxDeduct := maxDeduct(taxDeductions, payload.Allowances)
 	deduct -= maxDeduct
 	taxRate, err := h.store.TaxRates(deduct)
 	if err != nil {
@@ -97,4 +83,23 @@ func calculateTaxPayable(deduct float64, wht float64, rate TaxRate) float64 {
 	taxPercent := (rate.TaxRate / 100)
 	taxfund := ((deduct - baseTax) * taxPercent) - wht
 	return taxfund
+}
+
+func maxDeduct(tds []TaxDeduction, alls []Allowance) float64 {
+	var maxDeduct float64
+	for _, td := range tds {
+		if td.TaxAllowanceType == "personal" {
+			maxDeduct += td.MaxDeductionAmount
+		}
+		for _, a := range alls {
+			if td.TaxAllowanceType == a.AllowanceType {
+				if td.MaxDeductionAmount >= a.Amount {
+					maxDeduct += a.Amount
+				} else {
+					maxDeduct += td.MaxDeductionAmount
+				}
+			}
+		}
+	}
+	return maxDeduct
 }
