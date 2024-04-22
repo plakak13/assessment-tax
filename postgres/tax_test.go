@@ -38,12 +38,14 @@ func TestTaxDeductionByType(t *testing.T) {
 	}
 	allownceType := []string{"donation", "k-reciept"}
 
-	mockQuery := "SELECT max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN"
+	mockQuery := "SELECT max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
 	rows := sqlmock.NewRows([]string{"max_deduction_amount", "default_amount", "admin_override_max", "min_amount", "tax_allowance_type"}).
 		AddRow(100000.00, 0.00, 0.00, 0.00, "donation").
 		AddRow(50000.00, 50000.00, 100000.00, 0.00, "k-reciept")
 
-	mock.ExpectQuery(mockQuery).
+	mock.ExpectPrepare(mockQuery).
+		ExpectQuery().
+		WithArgs(allownceType[0], allownceType[1]).
 		WillReturnRows(rows)
 
 	td, err := p.TaxDeductionByType(allownceType)

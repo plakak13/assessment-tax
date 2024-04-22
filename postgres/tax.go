@@ -33,18 +33,27 @@ func (p *Postgres) TaxDeductionByType(allowanceTypes []string) ([]tax.TaxDeducti
 	if len(allowanceTypes) == 0 {
 		return []tax.TaxDeduction{}, fmt.Errorf("please sent allowance type as least 1")
 	}
+
 	var td []tax.TaxDeduction
+	argsTax := make([]any, len(allowanceTypes))
+
 	query := "SELECT max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ("
 
 	for i, att := range allowanceTypes {
-		query += fmt.Sprintf("'%s'", att)
+		query += fmt.Sprintf("$%d", i+1)
+		argsTax[i] = att
 		if i < len(allowanceTypes)-1 {
 			query += ", "
 		}
 	}
 	query += ")"
 
-	rows, err := p.Db.Query(query)
+	stmt, err := p.Db.Prepare(query)
+	if err != nil {
+		return td, err
+	}
+
+	rows, err := stmt.Query(argsTax...)
 	if err != nil {
 		return td, err
 	}

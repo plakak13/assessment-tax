@@ -33,6 +33,7 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	for _, v := range payload.Allowances {
 		allowanceType = append(allowanceType, v.AllowanceType)
 	}
+
 	allowanceType = append(allowanceType, "personal")
 	taxDeductions, err := h.store.TaxDeductionByType(allowanceType)
 
