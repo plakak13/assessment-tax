@@ -1,5 +1,7 @@
 package tax
 
+import "testing"
+
 // import (
 // 	"testing"
 // )
@@ -59,3 +61,30 @@ package tax
 // 		}
 // 	})
 // }
+
+func TestCaluate(t *testing.T) {
+	taxD := []TaxDeduction{
+		{
+			MaxDeductionAmount: 100000.00,
+			DefaultAmount:      0.00,
+			AdminOverrideMax:   0.00,
+			MinAmount:          0.00,
+			TaxAllowanceType:   "donation",
+		},
+		// {
+		// 	MaxDeductionAmount: 50000.00,
+		// 	DefaultAmount:      50000.00,
+		// 	AdminOverrideMax:   100000.00,
+		// 	MinAmount:          0.00,
+		// 	TaxAllowanceType:   "k-reciept",
+		// },
+	}
+	got := calculate(440000.0, TaxRate{
+		LowerBoundIncome: 150001,
+		TaxRate:          10,
+	}, taxD)
+
+	if got != 29000.0 {
+		t.Errorf("Expect 290000.0 but got %.1f", got)
+	}
+}
