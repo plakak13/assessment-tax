@@ -47,17 +47,16 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, "Bad Request")
 	}
 
-	deduct := payload.TotalIncome - payload.WithHoldingTax
-	for _, v := range payload.Allowances {
-		deduct -= v.Amount
-	}
+	deduct := payload.TotalIncome
 
+	maxDeduct := maxDeduct(taxDeductions, payload.Allowances)
+	deduct -= maxDeduct
 	taxRate, err := h.store.TaxRates(deduct)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, err)
 	}
 
-	taxFund := calculate(deduct, taxRate, taxDeductions)
+	taxFund := calculateTaxPayable(deduct, payload.WithHoldingTax, taxRate)
 
 	return c.JSON(http.StatusOK, CalculationResponse{Tax: taxFund})
 }
@@ -78,14 +77,29 @@ func validation(taxDeducts []TaxDeduction, t TaxCalculation) bool {
 	return true
 }
 
-func calculate(deduct float64, rate TaxRate, taxDeducts []TaxDeduction) float64 {
+func calculateTaxPayable(deduct float64, wht float64, rate TaxRate) float64 {
 
 	baseTax := 150000.0
-	for _, v := range taxDeducts {
-		if v.DefaultAmount != 0 {
-			deduct -= v.MaxDeductionAmount
+	taxPercent := (rate.TaxRate / 100)
+	taxfund := ((deduct - baseTax) * taxPercent) - wht
+	return taxfund
+}
+
+func maxDeduct(tds []TaxDeduction, alls []Allowance) float64 {
+	var maxDeduct float64
+	for _, td := range tds {
+		if td.TaxAllowanceType == "personal" {
+			maxDeduct += td.MaxDeductionAmount
+		}
+		for _, a := range alls {
+			if td.TaxAllowanceType == a.AllowanceType {
+				if td.MaxDeductionAmount >= a.Amount {
+					maxDeduct += a.Amount
+				} else {
+					maxDeduct += td.MaxDeductionAmount
+				}
+			}
 		}
 	}
-	taxfund := (deduct - baseTax) * (rate.TaxRate / 100)
-	return taxfund
+	return maxDeduct
 }
