@@ -1,6 +1,74 @@
 package tax
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/assert"
+)
+
+type MockTax struct {
+	taxRate       TaxRate
+	taxDeductions []TaxDeduction
+	err           error
+}
+
+// TaxDeductionByType implements Storer.
+func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, error) {
+	return h.taxDeductions, h.err
+}
+
+// TaxRates implements Storer.
+func (h MockTax) TaxRates(finalIncome float64) (TaxRate, error) {
+	return h.taxRate, h.err
+}
+
+func TestCalculationHandler_Success(t *testing.T) {
+	e := echo.New()
+	body := `{
+				"totalIncome": 500000.0,
+				"wht": 100.0,
+				"allowances": [
+					{"allowanceType": "donation","amount": 0.0}
+				]
+			}`
+	req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	h := New(MockTax{})
+	err := h.CalculationHandler(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+
+}
+
+func TestCalculationHandler_BadRequest(t *testing.T) {
+	e := echo.New()
+	body := `{
+				"totalIncome": 500000.0,
+				"wht": 0.0,
+				"allowances": [
+					{"allowanceType": "donation","amount": 0.0}
+				]
+			}`
+	req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	h := New(MockTax{})
+	err := h.CalculationHandler(c)
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+
+}
 
 func TestCalculate(t *testing.T) {
 	type test struct {
