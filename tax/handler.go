@@ -13,7 +13,8 @@ type Handler struct {
 }
 
 type Storer interface {
-	TaxRates(finalIncome float64) (TaxRate, error)
+	TaxRatesIncome(finalIncome float64) (TaxRate, error)
+	TaxRates() ([]TaxRate, error)
 	TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, error)
 }
 
@@ -52,12 +53,30 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	maxDeduct := maxDeduct(taxDeductions, payload.Allowances)
 	deducted -= maxDeduct
 
-	taxRate, err := h.store.TaxRates(deducted)
+	taxRate, err := h.store.TaxRatesIncome(deducted)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
 	taxFund := calculateTaxPayable(deducted, payload.WithHoldingTax, taxRate)
+
+	taxRates, err := h.store.TaxRates()
+
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+	var taxLevels []TaxLevelInfo
+
+	for _, v := range taxRates {
+		tFormat := fmt.Sprintf("%f-%f", v.LowerBoundIncome, v.LowerBoundIncome-1)
+		if v.LowerBoundIncome != 0 {
+			taxLevels = append(taxLevels, TaxLevelInfo{
+				Tax:   0,
+				Level: tFormat,
+			})
+		}
+
+	}
 
 	return c.JSON(http.StatusOK, CalculationResponse{Tax: taxFund})
 }

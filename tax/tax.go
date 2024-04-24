@@ -20,10 +20,17 @@ type TaxDeduction struct {
 }
 
 type TaxRate struct {
+	ID               int     `json:"id" example:"1"`
 	LowerBoundIncome float64 `json:"lower_bound_income" example:"100.0"`
 	TaxRate          float64 `json:"tax_rate" example:"100.0"`
 }
 
 type CalculationResponse struct {
-	Tax float64 `json:"tax"`
+	Tax      float64        `json:"tax"`
+	TaxLevel []TaxLevelInfo `json:"taxLevel" example:"taxAllowance"`
+}
+
+type TaxLevelInfo struct {
+	Level string  `json:"Level" example:"0-150,000"`
+	Tax   float64 `json:"Tax" example:"100.0"`
 }

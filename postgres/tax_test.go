@@ -159,7 +159,7 @@ func TestTaxRates(t *testing.T) {
 			WithArgs(expectedTaxRate.LowerBoundIncome).
 			WillReturnRows(rows)
 
-		got, err := postgres.TaxRates(expectedTaxRate.LowerBoundIncome)
+		got, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
 
 		assert.Equal(t, got, tax.TaxRate{})
 		assert.Error(t, err, "should be error")
@@ -185,7 +185,7 @@ func TestTaxRates(t *testing.T) {
 			WithArgs(expectedTaxRate.LowerBoundIncome).
 			WillReturnRows(rows)
 
-		got, err := postgres.TaxRates(expectedTaxRate.LowerBoundIncome)
+		got, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
 
 		assert.Equal(t, got, tax.TaxRate{})
 		assert.Error(t, err, "sql: no rows")
@@ -209,7 +209,7 @@ func TestTaxRates(t *testing.T) {
 			WithArgs(expectedTaxRate.LowerBoundIncome).
 			WillReturnRows(rows)
 
-		taxRate, err := postgres.TaxRates(expectedTaxRate.LowerBoundIncome)
+		taxRate, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
 
 		assert.NoError(t, err)
 		assert.Equal(t, taxRate, expectedTaxRate, "they should by equal")
