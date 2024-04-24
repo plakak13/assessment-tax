@@ -26,8 +26,9 @@ type TaxRate struct {
 }
 
 type CalculationResponse struct {
-	Tax      float64        `json:"tax"`
-	TaxLevel []TaxLevelInfo `json:"taxLevel" example:"taxAllowance"`
+	Tax       float64        `json:"tax" example:"100.0"`
+	TaxRefund float64        `json:"taxRefund" example:"1000.0"`
+	TaxLevel  []TaxLevelInfo `json:"taxLevel" example:"taxAllowance"`
 }
 
 type TaxLevelInfo struct {

@@ -3,6 +3,7 @@ package tax
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"slices"
 
@@ -63,25 +64,39 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
-	kk := slices.IndexFunc(taxRates, func(t TaxRate) bool {
+	foundKey := slices.IndexFunc(taxRates, func(t TaxRate) bool {
 		return deducted <= t.LowerBoundIncome
 	})
 
-	taxFund := calculateTaxPayable(deducted, payload.WithHoldingTax, taxRates[kk])
+	rIndex := foundKey
 
+	if foundKey > 0 {
+		rIndex = foundKey - 1
+	} else {
+		rIndex = 0
+	}
+
+	taxFund := calculateTaxPayable(deducted, payload.WithHoldingTax, taxRates[rIndex])
+
+	taxRefund := 0.0
 	var taxLevels []TaxLevelInfo
 	p := message.NewPrinter(language.English)
 
+	if math.Signbit(taxFund) {
+		taxRefund = math.Abs(taxFund)
+		taxFund = 0.0
+	}
+
 	for i, v := range taxRates {
-		fTaz := 0.0
-		if v.ID == taxRates[kk].ID {
-			fTaz = taxFund
+		tVal := 0.0
+		if v.ID == taxRates[rIndex].ID {
+			tVal = taxFund
 		}
 		if i+1 != len(taxRates) {
 			tFormat := p.Sprintf("%v-%v", number.Decimal(v.LowerBoundIncome), number.Decimal(taxRates[i+1].LowerBoundIncome-1))
 
 			taxLevels = append(taxLevels, TaxLevelInfo{
-				Tax:   fTaz,
+				Tax:   tVal,
 				Level: tFormat,
 			})
 
@@ -89,7 +104,7 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 			lastT := p.Sprintf("%v ขึ้นไป", number.Decimal(v.LowerBoundIncome))
 
 			taxLevels = append(taxLevels, TaxLevelInfo{
-				Tax:   fTaz,
+				Tax:   tVal,
 				Level: lastT,
 			})
 
@@ -97,7 +112,11 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 
 	}
 
-	return c.JSON(http.StatusOK, CalculationResponse{Tax: taxFund, TaxLevel: taxLevels})
+	return c.JSON(http.StatusOK, CalculationResponse{
+		Tax:       taxFund,
+		TaxRefund: taxRefund,
+		TaxLevel:  taxLevels,
+	})
 }
 
 func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
