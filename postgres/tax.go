@@ -84,14 +84,14 @@ func (p *Postgres) TaxDeductionByType(allowanceTypes []string) ([]tax.TaxDeducti
 	return td, nil
 }
 
-func (p *Postgres) TaxRates(finalIncome float64) (tax.TaxRate, error) {
+func (p *Postgres) TaxRatesIncome(finalIncome float64) (tax.TaxRate, error) {
 	var r tax.TaxRate
 
-	query := `SELECT lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= $1 ORDER BY id DESC`
+	query := `SELECT id, lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= $1 ORDER BY id DESC`
 
 	row := p.Db.QueryRow(query, finalIncome)
 
-	err := row.Scan(&r.LowerBoundIncome, &r.TaxRate)
+	err := row.Scan(&r.ID, &r.LowerBoundIncome, &r.TaxRate)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -101,4 +101,29 @@ func (p *Postgres) TaxRates(finalIncome float64) (tax.TaxRate, error) {
 	}
 
 	return r, nil
+}
+
+func (p *Postgres) TaxRates() ([]tax.TaxRate, error) {
+	query := `SELECT id, lower_bound_income, tax_rate FROM tax_rate`
+	rows, err := p.Db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+	var tr []tax.TaxRate
+
+	for rows.Next() {
+		var t tax.TaxRate
+		err = rows.Scan(&t.ID, &t.LowerBoundIncome, &t.TaxRate)
+		if err != nil {
+			return nil, err
+		}
+		tr = append(tr, tax.TaxRate{
+			ID:               t.ID,
+			LowerBoundIncome: t.LowerBoundIncome,
+			TaxRate:          t.TaxRate,
+		})
+	}
+	return tr, nil
 }

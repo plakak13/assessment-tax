@@ -155,11 +155,11 @@ func TestTaxRates(t *testing.T) {
 			AddRow(nil, nil).
 			RowError(1, errors.New("error rows"))
 
-		mock.ExpectQuery("SELECT lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
+		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
 			WithArgs(expectedTaxRate.LowerBoundIncome).
 			WillReturnRows(rows)
 
-		got, err := postgres.TaxRates(expectedTaxRate.LowerBoundIncome)
+		got, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
 
 		assert.Equal(t, got, tax.TaxRate{})
 		assert.Error(t, err, "should be error")
@@ -181,11 +181,11 @@ func TestTaxRates(t *testing.T) {
 
 		rows := sqlmock.NewRows(allownceType)
 
-		mock.ExpectQuery("SELECT lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
+		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
 			WithArgs(expectedTaxRate.LowerBoundIncome).
 			WillReturnRows(rows)
 
-		got, err := postgres.TaxRates(expectedTaxRate.LowerBoundIncome)
+		got, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
 
 		assert.Equal(t, got, tax.TaxRate{})
 		assert.Error(t, err, "sql: no rows")
@@ -198,18 +198,19 @@ func TestTaxRates(t *testing.T) {
 		postgres := Postgres{Db: db}
 
 		expectedTaxRate := tax.TaxRate{
+			ID:               1,
 			LowerBoundIncome: 150001.00,
 			TaxRate:          101,
 		}
 
-		rows := sqlmock.NewRows([]string{"lower_bound_income", "tax_rate"}).
-			AddRow(expectedTaxRate.LowerBoundIncome, expectedTaxRate.TaxRate)
+		rows := sqlmock.NewRows([]string{"id", "lower_bound_income", "tax_rate"}).
+			AddRow(expectedTaxRate.ID, expectedTaxRate.LowerBoundIncome, expectedTaxRate.TaxRate)
 
-		mock.ExpectQuery("SELECT lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
+		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
 			WithArgs(expectedTaxRate.LowerBoundIncome).
 			WillReturnRows(rows)
 
-		taxRate, err := postgres.TaxRates(expectedTaxRate.LowerBoundIncome)
+		taxRate, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
 
 		assert.NoError(t, err)
 		assert.Equal(t, taxRate, expectedTaxRate, "they should by equal")

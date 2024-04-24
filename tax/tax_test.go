@@ -13,6 +13,7 @@ import (
 
 type MockTax struct {
 	taxRate           TaxRate
+	taxRates          []TaxRate
 	taxDeductions     []TaxDeduction
 	errorTaxDeduction error
 	errorTaxRate      error
@@ -26,19 +27,27 @@ func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, er
 	return h.taxDeductions, nil
 }
 
-func (h MockTax) TaxRates(finalIncome float64) (TaxRate, error) {
+func (h MockTax) TaxRatesIncome(finalIncome float64) (TaxRate, error) {
 	if h.errorTaxRate != nil {
 		return h.taxRate, h.errorTaxRate
 	}
 	return h.taxRate, nil
 }
 
-func (h *MockTax) CalculationHandler(echo.Context) error {
+func (h MockTax) CalculationHandler(echo.Context) error {
 	if h.errorBindContext != nil {
 		return h.errorBindContext
 	}
 	return nil
 }
+
+func (h MockTax) TaxRates() ([]TaxRate, error) {
+	if h.errorTaxRate != nil {
+		return nil, h.errorTaxRate
+	}
+	return h.taxRates, nil
+}
+
 func TestCalculationHandler_Success(t *testing.T) {
 	e := echo.New()
 	body := `{
@@ -53,7 +62,25 @@ func TestCalculationHandler_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	h := New(MockTax{})
+	h := New(MockTax{
+		taxRates: []TaxRate{
+			{
+				ID:               1,
+				LowerBoundIncome: 0.0,
+				TaxRate:          0,
+			},
+			{
+				ID:               2,
+				LowerBoundIncome: 150001.0,
+				TaxRate:          10,
+			},
+			{
+				ID:               3,
+				LowerBoundIncome: 500001.0,
+				TaxRate:          15,
+			},
+		},
+	})
 	err := h.CalculationHandler(c)
 
 	assert.NoError(t, err)
@@ -76,7 +103,25 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		h := New(MockTax{})
+		h := New(&MockTax{
+			taxRates: []TaxRate{
+				{
+					ID:               1,
+					LowerBoundIncome: 0.0,
+					TaxRate:          0,
+				},
+				{
+					ID:               2,
+					LowerBoundIncome: 150001.0,
+					TaxRate:          10,
+				},
+				{
+					ID:               3,
+					LowerBoundIncome: 500001.0,
+					TaxRate:          15,
+				},
+			},
+		})
 		err := h.CalculationHandler(c)
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
