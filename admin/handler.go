@@ -41,6 +41,11 @@ func (h *Handler) AdminHandler(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, msg)
 	}
 
+	if tRows[0].DefaultAmount > payload.Amount {
+		msg := fmt.Sprintf("กรุณากำหนดมีค่าเกินกว่า (%.1f) ", tRows[0].DefaultAmount)
+		return c.JSON(http.StatusBadRequest, msg)
+	}
+
 	s := postgres.SettingTaxDeduction{
 		ID:     tRows[0].ID,
 		Amount: payload.Amount,
