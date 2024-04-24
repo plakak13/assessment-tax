@@ -12,6 +12,7 @@ type TaxCalculation struct {
 }
 
 type TaxDeduction struct {
+	ID                 int     `json:"id" example:"1"`
 	MaxDeductionAmount float64 `json:"max_deduction_amount" example:"100.00"`
 	DefaultAmount      float64 `json:"default_amount" example:"100.00"`
 	AdminOverrideMax   float64 `json:"admin_override_max" example:"100.00"`

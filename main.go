@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/labstack/echo/v4"
+	"github.com/plakak13/assessment-tax/admin"
 	"github.com/plakak13/assessment-tax/postgres"
 	"github.com/plakak13/assessment-tax/tax"
 )
@@ -26,8 +27,12 @@ func main() {
 	})
 
 	handler := tax.New(p)
+	adminHandler := admin.New(p)
 	g := e.Group("/tax")
 	g.POST("/calculations", handler.CalculationHandler)
+
+	a := e.Group("/admin")
+	a.POST("/deductions/personal", adminHandler.AdminHandler)
 
 	e.Logger.Fatal(e.Start(":1323"))
 
