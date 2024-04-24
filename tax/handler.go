@@ -58,15 +58,17 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	deducted -= maxDeduct
 
 	taxRates, err := h.store.TaxRates()
+
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+
 	kk := slices.IndexFunc(taxRates, func(t TaxRate) bool {
 		return deducted <= t.LowerBoundIncome
 	})
 
 	taxFund := calculateTaxPayable(deducted, payload.WithHoldingTax, taxRates[kk])
 
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
 	var taxLevels []TaxLevelInfo
 	p := message.NewPrinter(language.English)
 
