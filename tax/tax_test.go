@@ -1,6 +1,7 @@
 package tax
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,21 +12,33 @@ import (
 )
 
 type MockTax struct {
-	taxRate       TaxRate
-	taxDeductions []TaxDeduction
-	err           error
+	taxRate           TaxRate
+	taxDeductions     []TaxDeduction
+	errorTaxDeduction error
+	errorTaxRate      error
+	errorBindContext  error
 }
 
-// TaxDeductionByType implements Storer.
 func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, error) {
-	return h.taxDeductions, h.err
+	if h.errorTaxDeduction != nil {
+		return nil, h.errorTaxDeduction
+	}
+	return h.taxDeductions, nil
 }
 
-// TaxRates implements Storer.
 func (h MockTax) TaxRates(finalIncome float64) (TaxRate, error) {
-	return h.taxRate, h.err
+	if h.errorTaxRate != nil {
+		return h.taxRate, h.errorTaxRate
+	}
+	return h.taxRate, nil
 }
 
+func (h *MockTax) CalculationHandler(echo.Context) error {
+	if h.errorBindContext != nil {
+		return h.errorBindContext
+	}
+	return nil
+}
 func TestCalculationHandler_Success(t *testing.T) {
 	e := echo.New()
 	body := `{
@@ -49,25 +62,112 @@ func TestCalculationHandler_Success(t *testing.T) {
 }
 
 func TestCalculationHandler_BadRequest(t *testing.T) {
-	e := echo.New()
-	body := `{
+	t.Run("tax with holding is 0 should retrun bad request", func(t *testing.T) {
+		e := echo.New()
+		body := `{
 				"totalIncome": 500000.0,
 				"wht": 0.0,
 				"allowances": [
 					{"allowanceType": "donation","amount": 0.0}
 				]
 			}`
-	req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
 
-	h := New(MockTax{})
-	err := h.CalculationHandler(c)
+		h := New(MockTax{})
+		err := h.CalculationHandler(c)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, "\"invalid withholding tax amount\"\n", rec.Body.String())
+	})
 
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	t.Run("tax with holding over than total income should retrun badRequest", func(t *testing.T) {
+		e := echo.New()
+		body := `{
+				"totalIncome": 500000.0,
+				"wht": 500001.0,
+				"allowances": [
+					{"allowanceType": "donation","amount": 0.0}
+				]
+			}`
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
 
+		h := New(MockTax{})
+		err := h.CalculationHandler(c)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("worng json body should retrun bad request", func(t *testing.T) {
+		e := echo.New()
+		body := "{"
+
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		h := New(&MockTax{
+			errorBindContext: errors.New("error bind"),
+		})
+		err := h.CalculationHandler(c)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	})
+
+	t.Run("Tax Deduction By Type Error should retrun internal error", func(t *testing.T) {
+		e := echo.New()
+		body := `{
+			"totalIncome": 500000.0,
+			"wht": 500001.0,
+			"allowances": [
+				{"allowanceType": "doantion","amount": 0.0}
+			]
+		}`
+
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		h := New(&MockTax{
+			errorTaxDeduction: errors.New("error tax deduction by type"),
+		})
+		err := h.CalculationHandler(c)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Equal(t, "\"error tax deduction by type\"\n", rec.Body.String())
+	})
+
+	t.Run("Tax Rate Error should return internal error", func(t *testing.T) {
+		e := echo.New()
+		body := `{
+				"totalIncome": 500000.0,
+				"wht": 1000.0,
+				"allowances": [
+					{"allowanceType": "donation","amount": 0.0}
+				]
+			}`
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		h := New(&MockTax{
+			errorTaxRate: errors.New("error tax rate"),
+		})
+		err := h.CalculationHandler(c)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Equal(t, "\"error tax rate\"\n", rec.Body.String())
+	})
 }
 
 func TestCalculate(t *testing.T) {
@@ -135,14 +235,14 @@ func TestValidation(t *testing.T) {
 
 	type test struct {
 		name           string
-		expect         bool
+		errorExpectMsg string
 		taxDeductions  []TaxDeduction
 		taxCalculation TaxCalculation
 	}
 	tests := []test{
 		{
-			name:   "with holding tax is 0.0",
-			expect: false,
+			name:           "with holding tax is 0.0",
+			errorExpectMsg: "invalid withholding tax amount",
 			taxDeductions: []TaxDeduction{
 				{
 					MaxDeductionAmount: 100000.0,
@@ -164,8 +264,8 @@ func TestValidation(t *testing.T) {
 			},
 		},
 		{
-			name:   "with holding tax is 25000.0",
-			expect: true,
+			name:           "with holding tax is 25000.0",
+			errorExpectMsg: "",
 			taxDeductions: []TaxDeduction{
 				{
 					MaxDeductionAmount: 100000.0,
@@ -191,8 +291,10 @@ func TestValidation(t *testing.T) {
 	for _, v := range tests {
 		got := validation(v.taxDeductions, v.taxCalculation)
 
-		if got != v.expect {
-			t.Errorf("Expect %v but got %v", v.expect, got)
+		if got != nil {
+			if got.Error() != v.errorExpectMsg {
+				t.Errorf("Expect %v but got %v", v.errorExpectMsg, got)
+			}
 		}
 	}
 }
