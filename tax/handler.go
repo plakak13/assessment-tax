@@ -1,6 +1,7 @@
 package tax
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -38,50 +39,50 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	taxDeductions, err := h.store.TaxDeductionByType(allowanceType)
 
 	if err != nil {
-		fmt.Println("error===>" + err.Error())
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
-	pass := validation(taxDeductions, *payload)
-	if !pass {
-		return c.JSON(http.StatusBadRequest, "Bad Request")
+	err = validation(taxDeductions, *payload)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err.Error())
 	}
 
-	deduct := payload.TotalIncome
+	deducted := payload.TotalIncome
 
 	maxDeduct := maxDeduct(taxDeductions, payload.Allowances)
-	deduct -= maxDeduct
-	taxRate, err := h.store.TaxRates(deduct)
+	deducted -= maxDeduct
+
+	taxRate, err := h.store.TaxRates(deducted)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err)
+		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
-	taxFund := calculateTaxPayable(deduct, payload.WithHoldingTax, taxRate)
+	taxFund := calculateTaxPayable(deducted, payload.WithHoldingTax, taxRate)
 
 	return c.JSON(http.StatusOK, CalculationResponse{Tax: taxFund})
 }
 
-func validation(taxDeducts []TaxDeduction, t TaxCalculation) bool {
+func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
 
 	if t.WithHoldingTax <= 0 || t.WithHoldingTax > t.TotalIncome {
-		return false
+		return errors.New("invalid withholding tax amount")
 	}
 
 	for _, v := range t.Allowances {
 		for _, vt := range taxDeducts {
 			if vt.TaxAllowanceType == v.AllowanceType && v.Amount < vt.MinAmount {
-				return false
+				return fmt.Errorf("amount for %s allowance is below the minimum threshold", v.AllowanceType)
 			}
 		}
 	}
-	return true
+	return nil
 }
 
-func calculateTaxPayable(deduct float64, wht float64, rate TaxRate) float64 {
+func calculateTaxPayable(deducted float64, wht float64, rate TaxRate) float64 {
 
 	baseTax := 150000.0
 	taxPercent := (rate.TaxRate / 100)
-	taxfund := ((deduct - baseTax) * taxPercent) - wht
+	taxfund := ((deducted - baseTax) * taxPercent) - wht
 	return taxfund
 }
 
