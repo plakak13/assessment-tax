@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/labstack/echo/v4"
 	"golang.org/x/text/language"
@@ -56,14 +57,12 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	maxDeduct := maxDeduct(taxDeductions, payload.Allowances)
 	deducted -= maxDeduct
 
-	taxRate, err := h.store.TaxRatesIncome(deducted)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
-
-	taxFund := calculateTaxPayable(deducted, payload.WithHoldingTax, taxRate)
-
 	taxRates, err := h.store.TaxRates()
+	kk := slices.IndexFunc(taxRates, func(t TaxRate) bool {
+		return deducted <= t.LowerBoundIncome
+	})
+
+	taxFund := calculateTaxPayable(deducted, payload.WithHoldingTax, taxRates[kk])
 
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, err.Error())
@@ -73,7 +72,7 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 
 	for i, v := range taxRates {
 		fTaz := 0.0
-		if v.ID == taxRate.ID {
+		if v.ID == taxRates[kk].ID {
 			fTaz = taxFund
 		}
 		if i+1 != len(taxRates) {
