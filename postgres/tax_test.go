@@ -39,7 +39,7 @@ func TestTaxDeductionByType(t *testing.T) {
 		defer db.Close()
 
 		p := Postgres{Db: db}
-		mockQuery := "SELECT max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
+		mockQuery := "SELECT id, max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
 
 		expectedError := errors.New("failed to prepare statement")
 		mock.ExpectPrepare(mockQuery).WillReturnError(expectedError)
@@ -58,7 +58,7 @@ func TestTaxDeductionByType(t *testing.T) {
 		defer db.Close()
 
 		p := Postgres{Db: db}
-		mockQuery := "SELECT max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
+		mockQuery := "SELECT id, max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
 
 		expectedError := errors.New("query error")
 
@@ -78,9 +78,9 @@ func TestTaxDeductionByType(t *testing.T) {
 		defer db.Close()
 
 		p := Postgres{Db: db}
-		mockQuery := "SELECT max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
-		rows := sqlmock.NewRows([]string{"max_deduction_amount", "default_amount", "admin_override_max", "min_amount", "tax_allowance_type"}).
-			AddRow(nil, 50000.00, 100000.00, 0.00, "k-reciept").
+		mockQuery := "SELECT id, max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
+		rows := sqlmock.NewRows([]string{"id", "max_deduction_amount", "default_amount", "admin_override_max", "min_amount", "tax_allowance_type"}).
+			AddRow(nil, nil, 50000.00, 100000.00, 0.00, "k-reciept").
 			RowError(2, errors.New("error row"))
 
 		mock.ExpectPrepare(mockQuery).
@@ -103,6 +103,7 @@ func TestTaxDeductionByType(t *testing.T) {
 
 	expectedRec := []TaxDeduction{
 		{
+			ID:                 1,
 			MaxDeductionAmount: 100000.00,
 			DefaultAmount:      0.00,
 			AdminOverrideMax:   0.00,
@@ -110,6 +111,7 @@ func TestTaxDeductionByType(t *testing.T) {
 			TaxAllowanceType:   "donation",
 		},
 		{
+			ID:                 2,
 			MaxDeductionAmount: 50000.00,
 			DefaultAmount:      50000.00,
 			AdminOverrideMax:   100000.00,
@@ -119,10 +121,10 @@ func TestTaxDeductionByType(t *testing.T) {
 	}
 	allownceType := []string{"donation", "k-reciept"}
 
-	mockQuery := "SELECT max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
-	rows := sqlmock.NewRows([]string{"max_deduction_amount", "default_amount", "admin_override_max", "min_amount", "tax_allowance_type"}).
-		AddRow(100000.00, 0.00, 0.00, 0.00, "donation").
-		AddRow(50000.00, 50000.00, 100000.00, 0.00, "k-reciept")
+	mockQuery := "SELECT id, max_deduction_amount, default_amount, admin_override_max, min_amount, tax_allowance_type FROM tax_deduction WHERE tax_allowance_type IN ()"
+	rows := sqlmock.NewRows([]string{"id", "max_deduction_amount", "default_amount", "admin_override_max", "min_amount", "tax_allowance_type"}).
+		AddRow(1, 100000.00, 0.00, 0.00, 0.00, "donation").
+		AddRow(2, 50000.00, 50000.00, 100000.00, 0.00, "k-reciept")
 
 	mock.ExpectPrepare(mockQuery).
 		ExpectQuery().
