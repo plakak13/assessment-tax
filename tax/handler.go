@@ -6,6 +6,9 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"golang.org/x/text/language"
+	"golang.org/x/text/message"
+	"golang.org/x/text/number"
 )
 
 type Handler struct {
@@ -66,19 +69,34 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 	var taxLevels []TaxLevelInfo
+	p := message.NewPrinter(language.English)
 
-	for _, v := range taxRates {
-		tFormat := fmt.Sprintf("%f-%f", v.LowerBoundIncome, v.LowerBoundIncome-1)
-		if v.LowerBoundIncome != 0 {
+	for i, v := range taxRates {
+		fTaz := 0.0
+		if v.ID == taxRate.ID {
+			fTaz = taxFund
+		}
+		if i+1 != len(taxRates) {
+			tFormat := p.Sprintf("%v-%v", number.Decimal(v.LowerBoundIncome), number.Decimal(taxRates[i+1].LowerBoundIncome-1))
+
 			taxLevels = append(taxLevels, TaxLevelInfo{
-				Tax:   0,
+				Tax:   fTaz,
 				Level: tFormat,
 			})
+
+		} else {
+			lastT := p.Sprintf("%v ขึ้นไป", number.Decimal(v.LowerBoundIncome))
+
+			taxLevels = append(taxLevels, TaxLevelInfo{
+				Tax:   fTaz,
+				Level: lastT,
+			})
+
 		}
 
 	}
 
-	return c.JSON(http.StatusOK, CalculationResponse{Tax: taxFund})
+	return c.JSON(http.StatusOK, CalculationResponse{Tax: taxFund, TaxLevel: taxLevels})
 }
 
 func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {

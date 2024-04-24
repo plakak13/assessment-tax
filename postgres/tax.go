@@ -120,6 +120,7 @@ func (p *Postgres) TaxRates() ([]tax.TaxRate, error) {
 			return nil, err
 		}
 		tr = append(tr, tax.TaxRate{
+			ID:               t.ID,
 			LowerBoundIncome: t.LowerBoundIncome,
 			TaxRate:          t.TaxRate,
 		})

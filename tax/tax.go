@@ -31,6 +31,6 @@ type CalculationResponse struct {
 }
 
 type TaxLevelInfo struct {
-	Level string  `json:"Level" example:"0-150,000"`
-	Tax   float64 `json:"Tax" example:"100.0"`
+	Level string  `json:"level" example:"0-150,000"`
+	Tax   float64 `json:"tax" example:"100.0"`
 }
