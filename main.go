@@ -28,8 +28,10 @@ func main() {
 
 	handler := tax.New(p)
 	adminHandler := admin.New(p)
+
 	g := e.Group("/tax")
 	g.POST("/calculations", handler.CalculationHandler)
+	g.POST("/calculations/upload-csv", handler.CalculationCSV)
 
 	a := e.Group("/admin")
 	a.POST("/deductions/personal", adminHandler.AdminHandler)

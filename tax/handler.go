@@ -1,8 +1,10 @@
 package tax
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"slices"
@@ -119,6 +121,22 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	})
 }
 
+func (h *Handler) CalculationCSV(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return err
+	}
+	fileUploaded, err := file.Open()
+	if err != nil {
+		return err
+	}
+
+	defer fileUploaded.Close()
+
+	calculateFromFile(fileUploaded)
+	return c.JSON(http.StatusOK, "OK")
+}
+
 func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
 
 	if t.WithHoldingTax <= 0 || t.WithHoldingTax > t.TotalIncome {
@@ -160,4 +178,18 @@ func maxDeduct(tds []TaxDeduction, alls []Allowance) float64 {
 		}
 	}
 	return maxDeduct
+}
+
+func calculateFromFile(file io.Reader) error {
+	read := csv.NewReader(file)
+
+	recs, err := read.ReadAll()
+	if err != nil {
+		return err
+	}
+
+	for i, v := range recs {
+		fmt.Println("record %d : %v", i, v)
+	}
+	return nil
 }
