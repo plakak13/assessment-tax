@@ -4,7 +4,9 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"math"
+	"mime/multipart"
 	"net/http"
 	"slices"
 	"strconv"
@@ -33,34 +35,33 @@ func New(db Storer) *Handler {
 
 func (h *Handler) CalculationHandler(c echo.Context) error {
 
-	payload := new(TaxCalculation)
+	tc := new(TaxCalculation)
 
-	err := c.Bind(payload)
+	err := c.Bind(tc)
 	if err != nil {
 		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 	allowanceType := []string{}
 
-	for _, v := range payload.Allowances {
+	for _, v := range tc.Allowances {
 		allowanceType = append(allowanceType, v.AllowanceType)
 	}
 
 	allowanceType = append(allowanceType, "personal")
-	taxDeductions, err := h.store.TaxDeductionByType(allowanceType)
+	tds, err := h.store.TaxDeductionByType(allowanceType)
 
 	if err != nil {
 		return helper.FailedHandler(c, err.Error())
 	}
 
-	err = validation(taxDeductions, *payload)
-	if err != nil {
+	if err = validation(tds, *tc); err != nil {
 		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 
-	deducted := payload.TotalIncome
+	income := tc.TotalIncome
 
-	maxDeduct := maxDeduct(taxDeductions, payload.Allowances)
-	deducted -= maxDeduct
+	maxDeduct := maxDeduct(tds, tc.Allowances)
+	income -= maxDeduct
 
 	taxRates, err := h.store.TaxRates()
 
@@ -68,53 +69,13 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 		return helper.FailedHandler(c, err.Error())
 	}
 
-	foundKey := slices.IndexFunc(taxRates, func(t TaxRate) bool {
-		return deducted <= t.LowerBoundIncome
-	})
+	rIndex := taxRateIndex(taxRates, income)
 
-	rIndex := foundKey
+	taxFund := calculateTaxPayable(income, tc.WithHoldingTax, taxRates[rIndex])
 
-	if foundKey > 0 {
-		rIndex = foundKey - 1
-	} else {
-		rIndex = 0
-	}
+	taxRefund, taxFund := refundTax(taxFund)
+	taxLevels := taxLevelDetails(taxRates, rIndex, taxFund)
 
-	taxFund := calculateTaxPayable(deducted, payload.WithHoldingTax, taxRates[rIndex])
-
-	taxRefund := 0.0
-	var taxLevels []TaxLevelInfo
-	p := message.NewPrinter(language.English)
-
-	if math.Signbit(taxFund) {
-		taxRefund = math.Abs(taxFund)
-		taxFund = 0.0
-	}
-
-	for i, v := range taxRates {
-		tVal := 0.0
-		if v.ID == taxRates[rIndex].ID {
-			tVal = taxFund
-		}
-		if i+1 != len(taxRates) {
-			tFormat := p.Sprintf("%v-%v", number.Decimal(v.LowerBoundIncome), number.Decimal(taxRates[i+1].LowerBoundIncome-1))
-
-			taxLevels = append(taxLevels, TaxLevelInfo{
-				Tax:   tVal,
-				Level: tFormat,
-			})
-
-		} else {
-			lastT := p.Sprintf("%v ขึ้นไป", number.Decimal(v.LowerBoundIncome))
-
-			taxLevels = append(taxLevels, TaxLevelInfo{
-				Tax:   tVal,
-				Level: lastT,
-			})
-
-		}
-
-	}
 	return helper.SuccessHandler(c, CalculationResponse{
 		Tax:       taxFund,
 		TaxRefund: taxRefund,
@@ -123,28 +84,18 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 }
 
 func (h *Handler) CalculationCSV(c echo.Context) error {
-	file, err := c.FormFile("file")
+
+	fileUploaded, err := openFile(c)
 	if err != nil {
 		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 
-	fileUploaded, err := file.Open()
+	recs, err := readCSVRecords(fileUploaded)
 	if err != nil {
 		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 
-	defer fileUploaded.Close()
-
-	read := csv.NewReader(fileUploaded)
-
-	recs, err := read.ReadAll()
-	if err != nil {
-		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
-	}
-
-	if len(recs) > 0 && strings.HasPrefix(recs[0][0], "\ufeff") {
-		recs[0][0] = strings.TrimPrefix(recs[0][0], "\ufeff")
-	}
+	recs = removeBOM(recs)
 
 	if !validateCSVHeader(recs[0]) {
 		return helper.FailedHandler(c, "header incorrect", http.StatusBadRequest)
@@ -161,23 +112,23 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 	for i, v := range recs {
 
 		if i > 0 {
-			income, err := strconv.ParseFloat(v[0], 64)
+			totalIncome, err := praseFloat(v[0])
 			if err != nil {
 				return helper.FailedHandler(c, "total income can not be string or empty", http.StatusBadRequest)
 			}
 
-			wht, err := strconv.ParseFloat(v[1], 64)
+			wht, err := praseFloat(v[1])
 			if err != nil {
 				return helper.FailedHandler(c, "tax with holding (twh) can not be string or empty", http.StatusBadRequest)
 			}
 
-			amount, err := strconv.ParseFloat(v[2], 64)
+			amount, err := praseFloat(v[2])
 			if err != nil {
 				return helper.FailedHandler(c, "donation can not be string or empty", http.StatusBadRequest)
 			}
 
 			tc := TaxCalculation{
-				TotalIncome:    income,
+				TotalIncome:    totalIncome,
 				WithHoldingTax: wht,
 				Allowances: []Allowance{
 					{
@@ -198,7 +149,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 				},
 			})
 
-			deducted := income - maxDeduct
+			income := totalIncome - maxDeduct
 
 			taxRates, err := h.store.TaxRates()
 
@@ -206,22 +157,12 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 				return helper.FailedHandler(c, err.Error())
 			}
 
-			foundKey := slices.IndexFunc(taxRates, func(t TaxRate) bool {
-				return deducted <= t.LowerBoundIncome
-			})
+			rIndex := taxRateIndex(taxRates, income)
 
-			rIndex := foundKey
-
-			if foundKey > 0 {
-				rIndex = foundKey - 1
-			} else {
-				rIndex = 0
-			}
-
-			taxFund := calculateTaxPayable(deducted, wht, taxRates[rIndex])
+			taxFund := calculateTaxPayable(income, wht, taxRates[rIndex])
 
 			tti := TaxWithTotalIncome{
-				TotalIncome: income,
+				TotalIncome: totalIncome,
 				TaxAmount:   taxFund,
 			}
 
@@ -252,11 +193,11 @@ func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
 	return nil
 }
 
-func calculateTaxPayable(deducted float64, wht float64, rate TaxRate) float64 {
+func calculateTaxPayable(income float64, wht float64, rate TaxRate) float64 {
 
 	baseTax := 150000.0
 	taxPercent := (rate.TaxRate / 100)
-	taxfund := ((deducted - baseTax) * taxPercent) - wht
+	taxfund := ((income - baseTax) * taxPercent) - wht
 	return taxfund
 }
 
@@ -295,4 +236,96 @@ func equalSlice(a []string, b []string) bool {
 		}
 	}
 	return true
+}
+
+func praseFloat(s string) (float64, error) {
+	return strconv.ParseFloat(s, 64)
+}
+
+func openFile(c echo.Context) (multipart.File, error) {
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		return nil, err
+	}
+
+	fileUploaded, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+
+	defer fileUploaded.Close()
+	return fileUploaded, nil
+}
+
+func removeBOM(recs [][]string) [][]string {
+	if len(recs) > 0 && strings.HasPrefix(recs[0][0], "\ufeff") {
+		recs[0][0] = strings.TrimPrefix(recs[0][0], "\ufeff")
+	}
+	return recs
+}
+
+func taxLevelDetails(taxRates []TaxRate, rIndex int, taxFund float64) []TaxLevelInfo {
+	var taxLevels []TaxLevelInfo
+	p := message.NewPrinter(language.English)
+	for i, v := range taxRates {
+		tVal := 0.0
+		if v.ID == taxRates[rIndex].ID {
+			tVal = taxFund
+		}
+		if i+1 != len(taxRates) {
+			tFormat := p.Sprintf("%v-%v", number.Decimal(v.LowerBoundIncome), number.Decimal(taxRates[i+1].LowerBoundIncome-1))
+
+			taxLevels = append(taxLevels, TaxLevelInfo{
+				Tax:   tVal,
+				Level: tFormat,
+			})
+
+		} else {
+			lastT := p.Sprintf("%v ขึ้นไป", number.Decimal(v.LowerBoundIncome))
+
+			taxLevels = append(taxLevels, TaxLevelInfo{
+				Tax:   tVal,
+				Level: lastT,
+			})
+
+		}
+	}
+	return taxLevels
+}
+
+func refundTax(taxFund float64) (float64, float64) {
+	taxRefund := 0.0
+
+	if math.Signbit(taxFund) {
+		taxRefund = math.Abs(taxFund)
+		taxFund = 0.0
+	}
+	return taxRefund, taxFund
+}
+
+func taxRateIndex(taxRates []TaxRate, income float64) int {
+
+	foundKey := slices.IndexFunc(taxRates, func(t TaxRate) bool {
+		return income <= t.LowerBoundIncome
+	})
+
+	rIndex := foundKey
+
+	if foundKey > 0 {
+		rIndex = foundKey - 1
+	} else {
+		rIndex = 0
+	}
+	return rIndex
+}
+
+func readCSVRecords(fileUploaded io.Reader) ([][]string, error) {
+	read := csv.NewReader(fileUploaded)
+
+	recs, err := read.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	return recs, nil
 }

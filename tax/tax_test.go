@@ -135,7 +135,7 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 		err := h.CalculationHandler(c)
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
-		assert.Equal(t, "\"invalid withholding tax amount\"\n", rec.Body.String())
+		assert.Equal(t, "{\"message\":\"invalid withholding tax amount\"}\n", rec.Body.String())
 	})
 
 	t.Run("tax with holding over than total income should retrun badRequest", func(t *testing.T) {
@@ -197,7 +197,7 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
-		assert.Equal(t, "\"error tax deduction by type\"\n", rec.Body.String())
+		assert.Equal(t, "{\"message\":\"error tax deduction by type\"}\n", rec.Body.String())
 	})
 
 	t.Run("Tax Rate Error should return internal error", func(t *testing.T) {
@@ -221,7 +221,7 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
-		assert.Equal(t, "\"error tax rate\"\n", rec.Body.String())
+		assert.Equal(t, "{\"message\":\"error tax rate\"}\n", rec.Body.String())
 	})
 }
 
