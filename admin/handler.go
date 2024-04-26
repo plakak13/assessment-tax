@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/plakak13/assessment-tax/helper"
 	"github.com/plakak13/assessment-tax/postgres"
 	"github.com/plakak13/assessment-tax/tax"
 )
@@ -57,5 +58,5 @@ func (h *Handler) AdminHandler(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
-	return c.JSON(http.StatusOK, SettingResponse{PersonalDeduction: payload.Amount})
+	return helper.SuccessHandler(c, SettingResponse{PersonalDeduction: payload.Amount})
 }

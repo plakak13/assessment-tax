@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/plakak13/assessment-tax/helper"
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 	"golang.org/x/text/number"
@@ -36,7 +37,7 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 
 	err := c.Bind(payload)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err.Error())
+		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 	allowanceType := []string{}
 
@@ -48,12 +49,12 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	taxDeductions, err := h.store.TaxDeductionByType(allowanceType)
 
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
+		return helper.FailedHandler(c, err.Error())
 	}
 
 	err = validation(taxDeductions, *payload)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err.Error())
+		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 
 	deducted := payload.TotalIncome
@@ -64,7 +65,7 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	taxRates, err := h.store.TaxRates()
 
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
+		return helper.FailedHandler(c, err.Error())
 	}
 
 	foundKey := slices.IndexFunc(taxRates, func(t TaxRate) bool {
@@ -114,8 +115,7 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 		}
 
 	}
-
-	return c.JSON(http.StatusOK, CalculationResponse{
+	return helper.SuccessHandler(c, CalculationResponse{
 		Tax:       taxFund,
 		TaxRefund: taxRefund,
 		TaxLevel:  taxLevels,
@@ -125,11 +125,12 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 func (h *Handler) CalculationCSV(c echo.Context) error {
 	file, err := c.FormFile("file")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err.Error())
+		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
+
 	fileUploaded, err := file.Open()
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err.Error())
+		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 
 	defer fileUploaded.Close()
@@ -138,7 +139,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 
 	recs, err := read.ReadAll()
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, err.Error())
+		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 
 	if len(recs) > 0 && strings.HasPrefix(recs[0][0], "\ufeff") {
@@ -146,14 +147,14 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 	}
 
 	if !validateCSVHeader(recs[0]) {
-		return c.JSON(http.StatusBadRequest, errors.New("header incorrect").Error())
+		return helper.FailedHandler(c, "header incorrect", http.StatusBadRequest)
 	}
 
 	allowanceType := []string{"personal", "donation"}
 
 	tds, err := h.store.TaxDeductionByType(allowanceType)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
+		return helper.FailedHandler(c, err.Error())
 	}
 	var ttis []TaxWithTotalIncome
 
@@ -162,17 +163,17 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 		if i > 0 {
 			income, err := strconv.ParseFloat(v[0], 64)
 			if err != nil {
-				return c.JSON(http.StatusBadRequest, "total income can not be string or empty")
+				return helper.FailedHandler(c, "total income can not be string or empty", http.StatusBadRequest)
 			}
 
 			wht, err := strconv.ParseFloat(v[1], 64)
 			if err != nil {
-				return c.JSON(http.StatusBadRequest, "tax with holding (twh) can not be string or empty")
+				return helper.FailedHandler(c, "tax with holding (twh) can not be string or empty", http.StatusBadRequest)
 			}
 
 			amount, err := strconv.ParseFloat(v[2], 64)
 			if err != nil {
-				return c.JSON(http.StatusBadRequest, "donation can not be string or empty")
+				return helper.FailedHandler(c, "donation can not be string or empty", http.StatusBadRequest)
 			}
 
 			tc := TaxCalculation{
@@ -187,7 +188,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 			}
 
 			if err = validation(tds, tc); err != nil {
-				return c.JSON(http.StatusBadRequest, err.Error())
+				return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 			}
 
 			maxDeduct := maxDeduct(tds, []Allowance{
@@ -202,7 +203,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 			taxRates, err := h.store.TaxRates()
 
 			if err != nil {
-				return c.JSON(http.StatusInternalServerError, err.Error())
+				return helper.FailedHandler(c, err.Error())
 			}
 
 			foundKey := slices.IndexFunc(taxRates, func(t TaxRate) bool {
@@ -228,8 +229,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 		}
 
 	}
-
-	return c.JSON(http.StatusOK, ttis)
+	return helper.SuccessHandler(c, ttis)
 }
 
 func (h *Handler) TaxDeductions(allowanceType []string) ([]TaxDeduction, error) {
