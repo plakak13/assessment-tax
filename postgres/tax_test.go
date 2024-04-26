@@ -148,50 +148,22 @@ func TestTaxRates(t *testing.T) {
 		db, mock := NewMock()
 		defer db.Close()
 
-		expectedTaxRate := tax.TaxRate{
-			LowerBoundIncome: 150001.00,
-			TaxRate:          10,
-		}
+		// expectedTaxRate := tax.TaxRate{
+		// 	LowerBoundIncome: 150001.00,
+		// 	TaxRate:          10,
+		// }
 		allownceType := []string{"donation", "k-reciept"}
 		postgres := Postgres{Db: db}
 		rows := sqlmock.NewRows(allownceType).
 			AddRow(nil, nil).
 			RowError(1, errors.New("error rows"))
 
-		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
-			WithArgs(expectedTaxRate.LowerBoundIncome).
+		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate").
 			WillReturnRows(rows)
 
-		got, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
-
-		assert.Equal(t, got, tax.TaxRate{})
+		got, err := postgres.TaxRates()
+		assert.Nil(t, got)
 		assert.Error(t, err, "should be error")
-
-	})
-
-	t.Run("No Rows Error", func(t *testing.T) {
-
-		db, mock := NewMock()
-		defer db.Close()
-
-		expectedTaxRate := tax.TaxRate{
-			LowerBoundIncome: 150001.00,
-			TaxRate:          10,
-		}
-
-		allownceType := []string{"donation", "k-reciept"}
-		postgres := Postgres{Db: db}
-
-		rows := sqlmock.NewRows(allownceType)
-
-		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
-			WithArgs(expectedTaxRate.LowerBoundIncome).
-			WillReturnRows(rows)
-
-		got, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
-
-		assert.Equal(t, got, tax.TaxRate{})
-		assert.Error(t, err, "sql: no rows")
 
 	})
 
@@ -200,26 +172,58 @@ func TestTaxRates(t *testing.T) {
 		defer db.Close()
 		postgres := Postgres{Db: db}
 
-		expectedTaxRate := tax.TaxRate{
+		expectedTaxRate := []tax.TaxRate{{
 			ID:               1,
 			LowerBoundIncome: 150001.00,
 			TaxRate:          101,
-		}
+		}}
 
 		rows := sqlmock.NewRows([]string{"id", "lower_bound_income", "tax_rate"}).
-			AddRow(expectedTaxRate.ID, expectedTaxRate.LowerBoundIncome, expectedTaxRate.TaxRate)
+			AddRow(expectedTaxRate[0].ID, expectedTaxRate[0].LowerBoundIncome, expectedTaxRate[0].TaxRate)
 
-		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= \\$1 ORDER BY id DESC").
-			WithArgs(expectedTaxRate.LowerBoundIncome).
+		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate").
 			WillReturnRows(rows)
 
-		taxRate, err := postgres.TaxRatesIncome(expectedTaxRate.LowerBoundIncome)
+		taxRate, err := postgres.TaxRates()
 
 		assert.NoError(t, err)
 		assert.Equal(t, taxRate, expectedTaxRate, "they should by equal")
 		err = mock.ExpectationsWereMet()
 		assert.NoError(t, err, fmt.Sprintf("Unfulfilled expectations: %s", err))
 
+	})
+
+	t.Run("TaxRates", func(t *testing.T) {
+		db, mock := NewMock()
+		defer db.Close()
+
+		postgres := Postgres{Db: db}
+
+		expectedTaxRate := []tax.TaxRate{
+			{
+				ID:               1,
+				LowerBoundIncome: 150001.00,
+				TaxRate:          10,
+			},
+			{
+				ID:               2,
+				LowerBoundIncome: 500001.00,
+				TaxRate:          115,
+			},
+		}
+
+		rows := sqlmock.NewRows([]string{"id", "lower_bound_income", "tax_rate"}).
+			AddRow(expectedTaxRate[0].ID, expectedTaxRate[0].LowerBoundIncome, expectedTaxRate[0].TaxRate).
+			AddRow(expectedTaxRate[1].ID, expectedTaxRate[0].LowerBoundIncome, expectedTaxRate[0].TaxRate)
+
+		mock.ExpectQuery("SELECT id, lower_bound_income, tax_rate FROM tax_rate").
+			WillReturnRows(rows)
+
+		trs, err := postgres.TaxRates()
+		assert.NoError(t, err)
+		assert.Equal(t, len(trs), len(expectedTaxRate))
+		err = mock.ExpectationsWereMet()
+		assert.NoError(t, err, fmt.Sprintf("Unfulfilled expectations: %s", err))
 	})
 }
 

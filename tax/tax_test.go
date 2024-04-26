@@ -16,7 +16,6 @@ import (
 )
 
 type MockTax struct {
-	taxRate           TaxRate
 	taxRates          []TaxRate
 	taxDeductions     []TaxDeduction
 	errorTaxDeduction error
@@ -31,13 +30,6 @@ func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, er
 		return nil, h.errorTaxDeduction
 	}
 	return h.taxDeductions, nil
-}
-
-func (h MockTax) TaxRatesIncome(finalIncome float64) (TaxRate, error) {
-	if h.errorTaxRate != nil {
-		return h.taxRate, h.errorTaxRate
-	}
-	return h.taxRate, nil
 }
 
 func (h MockTax) CalculationHandler(echo.Context) error {

@@ -38,7 +38,7 @@ func main() {
 	a := e.Group("/admin")
 	a.Use(middleware.BasicAuth(authenticate))
 
-	a.POST("/deductions/personal", adminHandler.AdminHandler)
+	a.POST("/deductions/:type", adminHandler.AdminHandler)
 
 	e.Logger.Fatal(e.Start(":1323"))
 

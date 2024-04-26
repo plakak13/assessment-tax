@@ -26,13 +26,13 @@ func New(db Storer) *Handler {
 
 func (h *Handler) AdminHandler(c echo.Context) error {
 	payload := new(Setting)
-
+	param := c.Param("type")
 	err := c.Bind(payload)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, err.Error())
 	}
 
-	tRows, err := h.store.TaxDeductionByType([]string{"personal"})
+	tRows, err := h.store.TaxDeductionByType([]string{param})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}

@@ -1,8 +1,6 @@
 package postgres
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -84,25 +82,6 @@ func (p *Postgres) TaxDeductionByType(allowanceTypes []string) ([]tax.TaxDeducti
 	}
 
 	return td, nil
-}
-
-func (p *Postgres) TaxRatesIncome(finalIncome float64) (tax.TaxRate, error) {
-	var r tax.TaxRate
-
-	query := `SELECT id, lower_bound_income, tax_rate FROM tax_rate WHERE lower_bound_income <= $1 ORDER BY id DESC`
-
-	row := p.Db.QueryRow(query, finalIncome)
-
-	err := row.Scan(&r.ID, &r.LowerBoundIncome, &r.TaxRate)
-
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return tax.TaxRate{}, err
-		}
-		return tax.TaxRate{}, err
-	}
-
-	return r, nil
 }
 
 func (p *Postgres) TaxRates() ([]tax.TaxRate, error) {

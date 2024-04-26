@@ -24,7 +24,6 @@ type Handler struct {
 }
 
 type Storer interface {
-	TaxRatesIncome(finalIncome float64) (TaxRate, error)
 	TaxRates() ([]TaxRate, error)
 	TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, error)
 }
