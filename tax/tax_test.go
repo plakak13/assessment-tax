@@ -1,7 +1,9 @@
 package tax
 
 import (
+	"bytes"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +20,7 @@ type MockTax struct {
 	errorTaxDeduction error
 	errorTaxRate      error
 	errorBindContext  error
+	errorCalculateCSV error
 }
 
 func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, error) {
@@ -37,6 +40,13 @@ func (h MockTax) TaxRatesIncome(finalIncome float64) (TaxRate, error) {
 func (h MockTax) CalculationHandler(echo.Context) error {
 	if h.errorBindContext != nil {
 		return h.errorBindContext
+	}
+	return nil
+}
+
+func (h MockTax) CalculationCSV() error {
+	if h.errorCalculateCSV != nil {
+		return h.errorCalculateCSV
 	}
 	return nil
 }
@@ -359,5 +369,79 @@ func TestMaxDeduct(t *testing.T) {
 
 	if got != expected {
 		t.Errorf("maxDeduct result = %v; want %v", got, expected)
+	}
+}
+
+func TestCalculationCSV_Success(t *testing.T) {
+
+	e := echo.New()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.csv")
+	part.Write([]byte("totalIncome,wht,donation\n10000,1000,500"))
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/calculation", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	h := New(&MockTax{
+		taxRates: []TaxRate{
+			{
+				ID:               1,
+				LowerBoundIncome: 0.0,
+				TaxRate:          0,
+			},
+			{
+				ID:               2,
+				LowerBoundIncome: 150001.0,
+				TaxRate:          10,
+			},
+			{
+				ID:               3,
+				LowerBoundIncome: 500001.0,
+				TaxRate:          15,
+			},
+		},
+		taxDeductions: []TaxDeduction{
+			{MaxDeductionAmount: 60000, TaxAllowanceType: "personal"},
+			{MaxDeductionAmount: 100000, TaxAllowanceType: "donation"},
+		},
+	})
+	if err := h.CalculationCSV(c); err != nil {
+		t.Errorf("expected no error, got %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status OK, got %v", rec.Code)
+	}
+
+}
+
+func TestCalculationCSV_Failure(t *testing.T) {
+
+	e := echo.New()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.csv")
+	part.Write([]byte(`InvalidCSVData`))
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/calculation", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	h := New(&MockTax{
+		errorCalculateCSV: errors.New("error tax deduction by type"),
+	})
+
+	h.CalculationCSV(c)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status BadRequest, got %v", rec.Code)
 	}
 }
