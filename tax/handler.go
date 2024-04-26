@@ -77,8 +77,8 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 	taxLevels := taxLevelDetails(taxRates, rIndex, taxFund)
 
 	return helper.SuccessHandler(c, CalculationResponse{
-		Tax:       taxFund,
-		TaxRefund: taxRefund,
+		Tax:       math.Round(taxFund*100) / 100,
+		TaxRefund: math.Round(taxRefund*100) / 100,
 		TaxLevel:  taxLevels,
 	})
 }
@@ -113,21 +113,11 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 		if i == 0 {
 			continue
 		}
-		totalIncome, err := praseFloat(v[0])
-		if err != nil {
-			return helper.FailedHandler(c, "total income can not be string or empty", http.StatusBadRequest)
-		}
 
-		wht, err := praseFloat(v[1])
+		totalIncome, wht, amount, err := parseFloatValue(v)
 		if err != nil {
-			return helper.FailedHandler(c, "tax with holding (twh) can not be string or empty", http.StatusBadRequest)
+			return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 		}
-
-		amount, err := praseFloat(v[2])
-		if err != nil {
-			return helper.FailedHandler(c, "donation can not be string or empty", http.StatusBadRequest)
-		}
-
 		tc := TaxCalculation{
 			TotalIncome:    totalIncome,
 			WithHoldingTax: wht,
@@ -322,4 +312,23 @@ func readCSVRecords(fileUploaded io.Reader) ([][]string, error) {
 		return nil, err
 	}
 	return recs, nil
+}
+
+func parseFloatValue(v []string) (float64, float64, float64, error) {
+	totalIncome, err := praseFloat(v[0])
+	if err != nil {
+		return 0, 0, 0, errors.New("total income can not be string or empty")
+	}
+
+	wht, err := praseFloat(v[1])
+	if err != nil {
+		return 0, 0, 0, errors.New("tax with holding (twh) can not be string or empty")
+	}
+
+	amount, err := praseFloat(v[2])
+	if err != nil {
+		return 0, 0, 0, errors.New("donation can not be string or empty")
+	}
+
+	return totalIncome, wht, amount, nil
 }
