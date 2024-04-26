@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/plakak13/assessment-tax/admin"
 	"github.com/plakak13/assessment-tax/postgres"
 	"github.com/plakak13/assessment-tax/tax"
@@ -30,10 +31,13 @@ func main() {
 	adminHandler := admin.New(p)
 
 	g := e.Group("/tax")
+
 	g.POST("/calculations", handler.CalculationHandler)
 	g.POST("/calculations/upload-csv", handler.CalculationCSV)
 
 	a := e.Group("/admin")
+	a.Use(middleware.BasicAuth(authenticate))
+
 	a.POST("/deductions/personal", adminHandler.AdminHandler)
 
 	e.Logger.Fatal(e.Start(":1323"))
@@ -45,4 +49,11 @@ func main() {
 		fmt.Println("shutting down the server")
 		os.Exit(0)
 	}()
+}
+
+func authenticate(username, password string, c echo.Context) (bool, error) {
+	if username == os.Getenv("ADMIN_USERNAME") && password == os.Getenv("ADMIN_PASSWORD") {
+		return true, nil
+	}
+	return false, nil
 }

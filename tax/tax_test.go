@@ -2,6 +2,7 @@ package tax
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"mime/multipart"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+	"github.com/plakak13/assessment-tax/helper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,6 +23,7 @@ type MockTax struct {
 	errorTaxRate      error
 	errorBindContext  error
 	errorCalculateCSV error
+	errorInvalidWHT   error
 }
 
 func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, error) {
@@ -48,6 +51,11 @@ func (h MockTax) CalculationCSV() error {
 	if h.errorCalculateCSV != nil {
 		return h.errorCalculateCSV
 	}
+
+	if h.errorInvalidWHT != nil {
+		return h.errorInvalidWHT
+	}
+
 	return nil
 }
 
@@ -135,7 +143,7 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 		err := h.CalculationHandler(c)
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
-		assert.Equal(t, "\"invalid withholding tax amount\"\n", rec.Body.String())
+		assert.Equal(t, "invalid withholding tax amount", jsonMashal(rec.Body.Bytes()).Message)
 	})
 
 	t.Run("tax with holding over than total income should retrun badRequest", func(t *testing.T) {
@@ -197,7 +205,7 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
-		assert.Equal(t, "\"error tax deduction by type\"\n", rec.Body.String())
+		assert.Equal(t, "error tax deduction by type", jsonMashal(rec.Body.Bytes()).Message)
 	})
 
 	t.Run("Tax Rate Error should return internal error", func(t *testing.T) {
@@ -221,15 +229,15 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
-		assert.Equal(t, "\"error tax rate\"\n", rec.Body.String())
+		assert.Equal(t, "error tax rate", jsonMashal(rec.Body.Bytes()).Message)
 	})
 }
 
 func TestCalculate(t *testing.T) {
 	type test struct {
 		name          string
-		expect        float64
-		finalIncome   float64
+		expected      float64
+		totalIncome   float64
 		wht           float64
 		taxDeductions []TaxDeduction
 		taxRate       TaxRate
@@ -237,8 +245,8 @@ func TestCalculate(t *testing.T) {
 	tests := []test{
 		{
 			name:        "with donation",
-			expect:      29000.0,
-			finalIncome: 440000.0,
+			expected:    29000.0,
+			totalIncome: 440000.0,
 			wht:         0.0,
 			taxDeductions: []TaxDeduction{
 				{
@@ -256,8 +264,8 @@ func TestCalculate(t *testing.T) {
 		},
 		{
 			name:        "with k-reciept",
-			expect:      4000.0,
-			finalIncome: 440000.0,
+			expected:    4000.0,
+			totalIncome: 440000.0,
 			wht:         25000.0,
 			taxDeductions: []TaxDeduction{
 				{
@@ -277,99 +285,140 @@ func TestCalculate(t *testing.T) {
 
 	for _, val := range tests {
 		t.Run(val.name, func(t *testing.T) {
-			got := calculateTaxPayable(val.finalIncome, val.wht, val.taxRate)
-
-			if got != val.expect {
-				t.Errorf("Expect %.1f but got %.1f", val.expect, got)
-			}
+			got := calculateTaxPayable(val.totalIncome, val.wht, val.taxRate)
+			assert.Equal(t, val.expected, got)
 		})
 	}
 }
 
 func TestValidation(t *testing.T) {
 
-	type test struct {
+	tests := []struct {
 		name           string
-		errorExpectMsg string
-		taxDeductions  []TaxDeduction
+		taxDeducts     []TaxDeduction
 		taxCalculation TaxCalculation
-	}
-	tests := []test{
+		expectedError  error
+	}{
 		{
-			name:           "with holding tax is 0.0",
-			errorExpectMsg: "invalid withholding tax amount",
-			taxDeductions: []TaxDeduction{
-				{
-					MaxDeductionAmount: 100000.0,
-					DefaultAmount:      0.0,
-					AdminOverrideMax:   0.0,
-					MinAmount:          0.0,
-					TaxAllowanceType:   "donation",
-				},
+			name: "Invalid withholding tax",
+			taxDeducts: []TaxDeduction{
+				{TaxAllowanceType: "personal", MinAmount: 10000},
 			},
 			taxCalculation: TaxCalculation{
-				TotalIncome:    500000.0,
-				WithHoldingTax: 0.0,
-				Allowances: []Allowance{
-					{
-						AllowanceType: "donation",
-						Amount:        0.0,
-					},
-				},
+				WithHoldingTax: 0,
+				TotalIncome:    100000,
 			},
+			expectedError: errors.New("invalid withholding tax amount"),
 		},
 		{
-			name:           "with holding tax is 25000.0",
-			errorExpectMsg: "",
-			taxDeductions: []TaxDeduction{
-				{
-					MaxDeductionAmount: 100000.0,
-					DefaultAmount:      0.0,
-					AdminOverrideMax:   0.0,
-					MinAmount:          0.0,
-					TaxAllowanceType:   "donation",
-				},
+			name: "Invalid withholding tax - negative",
+			taxDeducts: []TaxDeduction{
+				{TaxAllowanceType: "personal", MinAmount: 10000},
 			},
 			taxCalculation: TaxCalculation{
-				TotalIncome:    500000.0,
-				WithHoldingTax: 25000.0,
+				WithHoldingTax: -100,
+				TotalIncome:    100000,
+			},
+			expectedError: errors.New("invalid withholding tax amount"),
+		},
+		{
+			name: "Invalid withholding tax - exceeds total income",
+			taxDeducts: []TaxDeduction{
+				{TaxAllowanceType: "personal", MinAmount: 10000},
+			},
+			taxCalculation: TaxCalculation{
+				WithHoldingTax: 150000,
+				TotalIncome:    100000,
+			},
+			expectedError: errors.New("invalid withholding tax amount"),
+		},
+		{
+			name: "Amount for allowance is below the minimum threshold",
+			taxDeducts: []TaxDeduction{
+				{TaxAllowanceType: "personal", MinAmount: 10000},
+			},
+			taxCalculation: TaxCalculation{
+				WithHoldingTax: 25000,
+				TotalIncome:    500000,
 				Allowances: []Allowance{
-					{
-						AllowanceType: "donation",
-						Amount:        0.0,
-					},
+					{AllowanceType: "personal", Amount: 500},
 				},
 			},
+			expectedError: errors.New("amount for personal allowance is below the minimum threshold"),
+		},
+		{
+			name: "No errors",
+			taxDeducts: []TaxDeduction{
+				{TaxAllowanceType: "personal", MinAmount: 10000},
+			},
+			taxCalculation: TaxCalculation{
+				WithHoldingTax: 200,
+				TotalIncome:    1000,
+			},
+			expectedError: nil,
 		},
 	}
 
-	for _, v := range tests {
-		got := validation(v.taxDeductions, v.taxCalculation)
-
-		if got != nil {
-			if got.Error() != v.errorExpectMsg {
-				t.Errorf("Expect %v but got %v", v.errorExpectMsg, got)
-			}
-		}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := validation(test.taxDeducts, test.taxCalculation)
+			assert.Equal(t, test.expectedError, result)
+		})
 	}
 }
 
 func TestMaxDeduct(t *testing.T) {
-	tds := []TaxDeduction{
-		{MaxDeductionAmount: 60000, TaxAllowanceType: "personal"},
-		{MaxDeductionAmount: 0, TaxAllowanceType: "donation"},
-	}
-	alls := []Allowance{
-		{AllowanceType: "donation", Amount: 0},
+	tests := []struct {
+		name           string
+		tds            []TaxDeduction
+		alls           []Allowance
+		expectedDeduct float64
+	}{
+		{
+			name: "Personal allowance only",
+			tds: []TaxDeduction{
+				{TaxAllowanceType: "personal", MaxDeductionAmount: 60000},
+			},
+			alls:           nil,
+			expectedDeduct: 60000,
+		},
+		{
+			name: "Allowance lower than max deduction",
+			tds: []TaxDeduction{
+				{TaxAllowanceType: "personal", MaxDeductionAmount: 60000},
+				{TaxAllowanceType: "donation", MaxDeductionAmount: 100000},
+			},
+			alls: []Allowance{
+				{AllowanceType: "donation", Amount: 40000},
+			},
+			expectedDeduct: 100000,
+		},
+		{
+			name: "Allowance higher than max deduction",
+			tds: []TaxDeduction{
+				{TaxAllowanceType: "personal", MaxDeductionAmount: 60000},
+				{TaxAllowanceType: "donation", MaxDeductionAmount: 100000},
+			},
+			alls: []Allowance{
+				{AllowanceType: "donation", Amount: 200000},
+			},
+			expectedDeduct: 160000,
+		},
+		{
+			name:           "No allowances",
+			tds:            nil,
+			alls:           nil,
+			expectedDeduct: 0,
+		},
 	}
 
-	got := maxDeduct(tds, alls)
-
-	expected := 60000.0
-
-	if got != expected {
-		t.Errorf("maxDeduct result = %v; want %v", got, expected)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := maxDeduct(test.tds, test.alls)
+			assert.Equal(t, test.expectedDeduct, result)
+		})
 	}
+
 }
 
 func TestCalculationCSV_Success(t *testing.T) {
@@ -382,7 +431,7 @@ func TestCalculationCSV_Success(t *testing.T) {
 	part.Write([]byte("totalIncome,wht,donation\n10000,1000,500"))
 	writer.Close()
 
-	req := httptest.NewRequest(http.MethodPost, "/calculation", body)
+	req := httptest.NewRequest(http.MethodPost, "/tax/calculations/upload-csv", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -422,26 +471,215 @@ func TestCalculationCSV_Success(t *testing.T) {
 
 func TestCalculationCSV_Failure(t *testing.T) {
 
-	e := echo.New()
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	part, _ := writer.CreateFormFile("file", "test.csv")
-	part.Write([]byte(`InvalidCSVData`))
-	writer.Close()
-
-	req := httptest.NewRequest(http.MethodPost, "/calculation", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	h := New(&MockTax{
-		errorCalculateCSV: errors.New("error tax deduction by type"),
-	})
-
-	h.CalculationCSV(c)
-
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status BadRequest, got %v", rec.Code)
+	tests := []struct {
+		name           string
+		csvContent     string
+		expectedIncome float64
+		expectedWht    float64
+		expectedAmount float64
+		expectedErr    helper.ErrorMessage
+	}{
+		{
+			name:           "Invalid CSV Data",
+			csvContent:     "InvalidCSVData",
+			expectedIncome: 0,
+			expectedWht:    0,
+			expectedAmount: 0,
+			expectedErr:    helper.ErrorMessage{Message: "header incorrect"},
+		},
+		{
+			name:           "Empty totalIncone",
+			csvContent:     "totalIncome,wht,donation\n ,1000,500",
+			expectedIncome: 0,
+			expectedWht:    0,
+			expectedAmount: 0,
+			expectedErr:    helper.ErrorMessage{Message: "total income can not be string or empty"},
+		},
+		{
+			name:           "Empty with holding tax",
+			csvContent:     "totalIncome,wht,donation\n 10000.0, ,500",
+			expectedIncome: 0,
+			expectedWht:    0,
+			expectedAmount: 0,
+			expectedErr:    helper.ErrorMessage{Message: "tax with holding (twh) can not be string or empty"},
+		},
+		{
+			name:           "invalid donation field ",
+			csvContent:     "totalIncome,wht,donation\n 10000,1000,abc",
+			expectedIncome: 0,
+			expectedWht:    0,
+			expectedAmount: 0,
+			expectedErr:    helper.ErrorMessage{Message: "donation can not be string or empty"},
+		},
 	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			e := echo.New()
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+			part, _ := writer.CreateFormFile("file", "test.csv")
+			part.Write([]byte(test.csvContent))
+			writer.Close()
+
+			req := httptest.NewRequest(http.MethodPost, "/tax/calculations/upload-csv", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			h := New(&MockTax{
+				errorInvalidWHT: errors.New("err"),
+			})
+
+			h.CalculationCSV(c)
+
+			assert.Equal(t, http.StatusBadRequest, rec.Code)
+		})
+	}
+
+	t.Run("Failed Get Tax Deduction By Type", func(t *testing.T) {
+		e := echo.New()
+
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		part, _ := writer.CreateFormFile("file", "test.csv")
+		part.Write([]byte("totalIncome,wht,donation\n 1000,1000,500"))
+		writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations/upload-csv", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		h := New(&MockTax{
+			errorTaxDeduction: errors.New("Tax Deduction Failed"),
+		})
+
+		h.CalculationCSV(c)
+
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Equal(t, "Tax Deduction Failed", jsonMashal(rec.Body.Bytes()).Message)
+	})
+}
+
+func TestRemoveBOM(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          [][]string
+		expectedOutput [][]string
+	}{
+		{
+			name: "Input with BOM",
+			input: [][]string{
+				{"\ufefftotalIncome", "wht", "donation"},
+			},
+			expectedOutput: [][]string{
+				{"totalIncome", "wht", "donation"},
+			},
+		},
+		{
+			name: "Input without BOM",
+			input: [][]string{
+				{"totalIncome", "wht", "donation"},
+			},
+			expectedOutput: [][]string{
+				{"totalIncome", "wht", "donation"},
+			},
+		},
+		{
+			name:           "Empty input",
+			input:          [][]string{},
+			expectedOutput: [][]string{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := removeBOM(test.input)
+			assert.Equal(t, test.expectedOutput, result, "unexpected result for test: %s", test.name)
+		})
+	}
+}
+
+func TestRefundTax(t *testing.T) {
+
+	tests := []struct {
+		name           string
+		input          float64
+		expectedOutput []float64
+	}{
+		{
+			name:           "Positive input",
+			input:          10000,
+			expectedOutput: []float64{10000, 0},
+		},
+		{
+			name:           "Zero input",
+			input:          0,
+			expectedOutput: []float64{0, 0},
+		},
+		{
+			name:           "Nagative input",
+			input:          -10000,
+			expectedOutput: []float64{0, 10000},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			taxRF, taxF := refundTax(test.input)
+
+			assert.Equal(t, test.expectedOutput[0], taxF)
+			assert.Equal(t, test.expectedOutput[1], taxRF)
+		})
+	}
+
+}
+
+func TestEqualSlice(t *testing.T) {
+	tests := []struct {
+		name         string
+		sliceA       []string
+		sliceB       []string
+		expectedBool bool
+	}{
+		{
+			name:         "Equal slices",
+			sliceA:       []string{"a", "b", "c"},
+			sliceB:       []string{"a", "b", "c"},
+			expectedBool: true,
+		},
+		{
+			name:         "Unequal slices",
+			sliceA:       []string{"a", "b", "c"},
+			sliceB:       []string{"a", "b", "d"},
+			expectedBool: false,
+		},
+		{
+			name:         "Different lengths",
+			sliceA:       []string{"a", "b", "c"},
+			sliceB:       []string{"a", "b", "c", "d"},
+			expectedBool: false,
+		},
+		{
+			name:         "Empty slices",
+			sliceA:       []string{},
+			sliceB:       []string{},
+			expectedBool: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := equalSlice(test.sliceA, test.sliceB)
+			assert.Equal(t, test.expectedBool, result)
+		})
+	}
+}
+
+func jsonMashal(b []byte) helper.ErrorMessage {
+	var eMsg helper.ErrorMessage
+	json.Unmarshal(b, &eMsg)
+	return eMsg
 }
