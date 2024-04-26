@@ -4,10 +4,11 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"golang.org/x/text/language"
@@ -124,17 +125,115 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 func (h *Handler) CalculationCSV(c echo.Context) error {
 	file, err := c.FormFile("file")
 	if err != nil {
-		return err
+		return c.JSON(http.StatusBadRequest, err.Error())
 	}
 	fileUploaded, err := file.Open()
 	if err != nil {
-		return err
+		return c.JSON(http.StatusBadRequest, err.Error())
 	}
 
 	defer fileUploaded.Close()
 
-	calculateFromFile(fileUploaded)
-	return c.JSON(http.StatusOK, "OK")
+	read := csv.NewReader(fileUploaded)
+
+	recs, err := read.ReadAll()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, err.Error())
+	}
+
+	if len(recs) > 0 && strings.HasPrefix(recs[0][0], "\ufeff") {
+		recs[0][0] = strings.TrimPrefix(recs[0][0], "\ufeff")
+	}
+
+	if !validateCSVHeader(recs[0]) {
+		return c.JSON(http.StatusBadRequest, errors.New("header incorrect").Error())
+	}
+
+	allowanceType := []string{"personal", "donation"}
+
+	tds, err := h.store.TaxDeductionByType(allowanceType)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
+	var ttis []TaxWithTotalIncome
+
+	for i, v := range recs {
+
+		if i > 0 {
+			income, err := strconv.ParseFloat(v[0], 64)
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, "total income can not be string or empty")
+			}
+
+			wht, err := strconv.ParseFloat(v[1], 64)
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, "tax with holding (twh) can not be string or empty")
+			}
+
+			amount, err := strconv.ParseFloat(v[2], 64)
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, "donation can not be string or empty")
+			}
+
+			tc := TaxCalculation{
+				TotalIncome:    income,
+				WithHoldingTax: wht,
+				Allowances: []Allowance{
+					{
+						AllowanceType: "donation",
+						Amount:        amount,
+					},
+				},
+			}
+
+			if err = validation(tds, tc); err != nil {
+				return c.JSON(http.StatusBadRequest, err.Error())
+			}
+
+			maxDeduct := maxDeduct(tds, []Allowance{
+				{
+					AllowanceType: "donation",
+					Amount:        amount,
+				},
+			})
+
+			deducted := income - maxDeduct
+
+			taxRates, err := h.store.TaxRates()
+
+			if err != nil {
+				return c.JSON(http.StatusInternalServerError, err.Error())
+			}
+
+			foundKey := slices.IndexFunc(taxRates, func(t TaxRate) bool {
+				return deducted <= t.LowerBoundIncome
+			})
+
+			rIndex := foundKey
+
+			if foundKey > 0 {
+				rIndex = foundKey - 1
+			} else {
+				rIndex = 0
+			}
+
+			taxFund := calculateTaxPayable(deducted, wht, taxRates[rIndex])
+
+			tti := TaxWithTotalIncome{
+				TotalIncome: income,
+				TaxAmount:   taxFund,
+			}
+
+			ttis = append(ttis, tti)
+		}
+
+	}
+
+	return c.JSON(http.StatusOK, ttis)
+}
+
+func (h *Handler) TaxDeductions(allowanceType []string) ([]TaxDeduction, error) {
+	return h.store.TaxDeductionByType(allowanceType)
 }
 
 func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
@@ -180,16 +279,20 @@ func maxDeduct(tds []TaxDeduction, alls []Allowance) float64 {
 	return maxDeduct
 }
 
-func calculateFromFile(file io.Reader) error {
-	read := csv.NewReader(file)
+func validateCSVHeader(h []string) bool {
+	expected := []string{"totalIncome", "wht", "donation"}
+	return equalSlice(expected, h)
+}
 
-	recs, err := read.ReadAll()
-	if err != nil {
-		return err
+func equalSlice(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
 	}
 
-	for i, v := range recs {
-		fmt.Println("record %d : %v", i, v)
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
 	}
-	return nil
+	return true
 }

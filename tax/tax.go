@@ -36,3 +36,12 @@ type TaxLevelInfo struct {
 	Level string  `json:"level" example:"0-150,000"`
 	Tax   float64 `json:"tax" example:"100.0"`
 }
+
+type TaxCSVCalculation struct {
+	Taxes []TaxWithTotalIncome
+}
+
+type TaxWithTotalIncome struct {
+	TotalIncome float64 `json:"totalIncome" example:"100.0"`
+	TaxAmount   float64 `json:"tax" example:"100.0"`
+}
