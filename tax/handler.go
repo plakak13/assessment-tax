@@ -110,71 +110,65 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 	var ttis []TaxWithTotalIncome
 
 	for i, v := range recs {
+		if i == 0 {
+			continue
+		}
+		totalIncome, err := praseFloat(v[0])
+		if err != nil {
+			return helper.FailedHandler(c, "total income can not be string or empty", http.StatusBadRequest)
+		}
 
-		if i > 0 {
-			totalIncome, err := praseFloat(v[0])
-			if err != nil {
-				return helper.FailedHandler(c, "total income can not be string or empty", http.StatusBadRequest)
-			}
+		wht, err := praseFloat(v[1])
+		if err != nil {
+			return helper.FailedHandler(c, "tax with holding (twh) can not be string or empty", http.StatusBadRequest)
+		}
 
-			wht, err := praseFloat(v[1])
-			if err != nil {
-				return helper.FailedHandler(c, "tax with holding (twh) can not be string or empty", http.StatusBadRequest)
-			}
+		amount, err := praseFloat(v[2])
+		if err != nil {
+			return helper.FailedHandler(c, "donation can not be string or empty", http.StatusBadRequest)
+		}
 
-			amount, err := praseFloat(v[2])
-			if err != nil {
-				return helper.FailedHandler(c, "donation can not be string or empty", http.StatusBadRequest)
-			}
-
-			tc := TaxCalculation{
-				TotalIncome:    totalIncome,
-				WithHoldingTax: wht,
-				Allowances: []Allowance{
-					{
-						AllowanceType: "donation",
-						Amount:        amount,
-					},
-				},
-			}
-
-			if err = validation(tds, tc); err != nil {
-				return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
-			}
-
-			maxDeduct := maxDeduct(tds, []Allowance{
+		tc := TaxCalculation{
+			TotalIncome:    totalIncome,
+			WithHoldingTax: wht,
+			Allowances: []Allowance{
 				{
 					AllowanceType: "donation",
 					Amount:        amount,
 				},
-			})
-
-			income := totalIncome - maxDeduct
-
-			taxRates, err := h.store.TaxRates()
-
-			if err != nil {
-				return helper.FailedHandler(c, err.Error())
-			}
-
-			rIndex := taxRateIndex(taxRates, income)
-
-			taxFund := calculateTaxPayable(income, wht, taxRates[rIndex])
-
-			tti := TaxWithTotalIncome{
-				TotalIncome: totalIncome,
-				TaxAmount:   taxFund,
-			}
-
-			ttis = append(ttis, tti)
+			},
 		}
 
-	}
-	return helper.SuccessHandler(c, ttis)
-}
+		if err = validation(tds, tc); err != nil {
+			return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
+		}
 
-func (h *Handler) TaxDeductions(allowanceType []string) ([]TaxDeduction, error) {
-	return h.store.TaxDeductionByType(allowanceType)
+		maxDeduct := maxDeduct(tds, []Allowance{
+			{
+				AllowanceType: "donation",
+				Amount:        amount,
+			},
+		})
+
+		income := totalIncome - maxDeduct
+
+		taxRates, err := h.store.TaxRates()
+
+		if err != nil {
+			return helper.FailedHandler(c, err.Error())
+		}
+
+		rIndex := taxRateIndex(taxRates, income)
+
+		taxFund := calculateTaxPayable(income, wht, taxRates[rIndex])
+
+		ttis = append(ttis, TaxWithTotalIncome{
+			TotalIncome: totalIncome,
+			TaxAmount:   taxFund,
+		})
+	}
+
+	return helper.SuccessHandler(c, ttis)
 }
 
 func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {

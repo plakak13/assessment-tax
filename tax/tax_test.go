@@ -445,3 +445,42 @@ func TestCalculationCSV_Failure(t *testing.T) {
 		t.Errorf("expected status BadRequest, got %v", rec.Code)
 	}
 }
+
+func TestRemoveBOM(t *testing.T) {
+	tests := []struct {
+		name           string
+		input          [][]string
+		expectedOutput [][]string
+	}{
+		{
+			name: "Input with BOM",
+			input: [][]string{
+				{"\ufefftotalIncome", "wht", "donation"},
+			},
+			expectedOutput: [][]string{
+				{"totalIncome", "wht", "donation"},
+			},
+		},
+		{
+			name: "Input without BOM",
+			input: [][]string{
+				{"totalIncome", "wht", "donation"},
+			},
+			expectedOutput: [][]string{
+				{"totalIncome", "wht", "donation"},
+			},
+		},
+		{
+			name:           "Empty input",
+			input:          [][]string{},
+			expectedOutput: [][]string{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := removeBOM(test.input)
+			assert.Equal(t, test.expectedOutput, result, "unexpected result for test: %s", test.name)
+		})
+	}
+}
