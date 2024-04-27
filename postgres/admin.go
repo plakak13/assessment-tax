@@ -12,14 +12,14 @@ type UpdateTaxDeductionResponse struct {
 	LastInsertId int
 }
 
-func (p *Postgres) UpdateTaxDeduction(s SettingTaxDeduction) sql.Result {
+func (p *Postgres) UpdateTaxDeduction(s SettingTaxDeduction) (sql.Result, error) {
 
 	query := `UPDATE tax_deduction SET max_deduction_amount = $1 WHERE id = $2 `
 
 	row, err := p.Db.Exec(query, s.Amount, s.ID)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	return row
+	return row, nil
 }

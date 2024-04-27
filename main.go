@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/plakak13/assessment-tax/admin"
+	"github.com/plakak13/assessment-tax/helper"
 	"github.com/plakak13/assessment-tax/postgres"
 	"github.com/plakak13/assessment-tax/tax"
 )
@@ -23,9 +23,7 @@ func main() {
 	}
 
 	e := echo.New()
-	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "Hello, Go Bootcamp!")
-	})
+	e.Validator = helper.NewValidator()
 
 	handler := tax.New(p)
 	adminHandler := admin.New(p)
