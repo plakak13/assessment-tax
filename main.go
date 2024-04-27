@@ -38,7 +38,8 @@ func main() {
 
 	a.POST("/deductions/:type", adminHandler.AdminHandler)
 
-	e.Logger.Fatal(e.Start(":1323"))
+	port := fmt.Sprintf(":%s", os.Getenv("PORT"))
+	e.Logger.Fatal(e.Start(port))
 
 	go func() {
 		sig := make(chan os.Signal, 1)
