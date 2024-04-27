@@ -490,7 +490,7 @@ func TestCalculationCSV_Failure(t *testing.T) {
 			expectedIncome: 0,
 			expectedWht:    0,
 			expectedAmount: 0,
-			expectedErr:    helper.ErrorMessage{Message: "header incorrect"},
+			expectedErr:    helper.ErrorMessage{Message: "Invalid Header"},
 		},
 		{
 			name:           "Empty totalIncone",

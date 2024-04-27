@@ -101,7 +101,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 	recs = removeBOM(recs)
 
 	if !validateCSVHeader(recs[0]) {
-		return helper.FailedHandler(c, "header incorrect", http.StatusBadRequest)
+		return helper.FailedHandler(c, "Invalid Header", http.StatusBadRequest)
 	}
 
 	allowanceType := []string{"personal", "donation"}

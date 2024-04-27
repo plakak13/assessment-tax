@@ -74,6 +74,30 @@ func TestAdminHandler_Success(t *testing.T) {
 }
 
 func TestAdminHandler_Failed(t *testing.T) {
+	t.Run("Invalid setting Type", func(t *testing.T) {
+		e := echo.New()
+		e.Validator = helper.NewValidator()
+
+		body := `{"amount":60000}`
+		req := httptest.NewRequest(http.MethodPost, "/admin/deductions/:type", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+
+		c := e.NewContext(req, rec)
+
+		c.SetPath("/admin/deduction/:type")
+		c.SetParamNames("type")
+		c.SetParamValues("pesernal")
+
+		h := New(MockAdmin{
+			taxDeductionError: errors.New("invalid input value for enum tax_allowance_type"),
+		})
+
+		err := h.AdminHandler(c)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Equal(t, "invalid input value for enum tax_allowance_type", jsonMashal(rec.Body.Bytes()).Message)
+	})
 	t.Run("Invalid JSON", func(t *testing.T) {
 		e := echo.New()
 		e.Validator = helper.NewValidator()
