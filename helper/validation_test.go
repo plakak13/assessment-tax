@@ -29,3 +29,11 @@ func TestCustomValidate(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestNewCustomValidate(t *testing.T) {
+	cv := NewValidator()
+
+	assert.NotNil(t, cv)
+	assert.NotNil(t, cv.validator)
+	assert.IsType(t, validator.New(), cv.validator)
+}
