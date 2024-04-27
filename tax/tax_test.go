@@ -464,13 +464,10 @@ func TestCalculationCSV_Success(t *testing.T) {
 			{MaxDeductionAmount: 100000, TaxAllowanceType: "donation"},
 		},
 	})
-	if err := h.CalculationCSV(c); err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
+	err := h.CalculationCSV(c)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status OK, got %v", rec.Code)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
 
 }
 
