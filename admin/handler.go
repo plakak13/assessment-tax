@@ -29,7 +29,7 @@ func (h *Handler) AdminHandler(c echo.Context) error {
 	param := c.Param("type")
 
 	if err := c.Bind(payload); err != nil {
-		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
+		return helper.FailedHandler(c, "Invalid JSON", http.StatusBadRequest)
 	}
 
 	err := c.Validate(payload)
@@ -48,8 +48,8 @@ func (h *Handler) AdminHandler(c echo.Context) error {
 		return helper.FailedHandler(c, msg, http.StatusBadRequest)
 	}
 
-	if tRows[0].DefaultAmount > payload.Amount {
-		msg := fmt.Sprintf("กรุณากำหนดมีค่าเกินกว่า (%.1f) ", tRows[0].DefaultAmount)
+	if tRows[0].MinAmount > payload.Amount {
+		msg := fmt.Sprintf("กรุณากำหนดมีค่าเกินกว่า (%.1f)", tRows[0].MinAmount)
 		return helper.FailedHandler(c, msg, http.StatusBadRequest)
 	}
 
