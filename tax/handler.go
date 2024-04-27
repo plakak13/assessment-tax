@@ -24,7 +24,6 @@ type Handler struct {
 }
 
 type Storer interface {
-	TaxRatesIncome(finalIncome float64) (TaxRate, error)
 	TaxRates() ([]TaxRate, error)
 	TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, error)
 }
@@ -37,12 +36,16 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 
 	tc := new(TaxCalculation)
 
-	err := c.Bind(tc)
+	if err := c.Bind(tc); err != nil {
+		return helper.FailedHandler(c, "Invalid JSON", http.StatusBadRequest)
+	}
+
+	err := c.Validate(tc)
 	if err != nil {
 		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
-	allowanceType := []string{}
 
+	allowanceType := []string{}
 	for _, v := range tc.Allowances {
 		allowanceType = append(allowanceType, v.AllowanceType)
 	}
@@ -98,7 +101,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 	recs = removeBOM(recs)
 
 	if !validateCSVHeader(recs[0]) {
-		return helper.FailedHandler(c, "header incorrect", http.StatusBadRequest)
+		return helper.FailedHandler(c, "Invalid Header", http.StatusBadRequest)
 	}
 
 	allowanceType := []string{"personal", "donation"}

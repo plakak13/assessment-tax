@@ -16,7 +16,6 @@ import (
 )
 
 type MockTax struct {
-	taxRate           TaxRate
 	taxRates          []TaxRate
 	taxDeductions     []TaxDeduction
 	errorTaxDeduction error
@@ -31,13 +30,6 @@ func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, er
 		return nil, h.errorTaxDeduction
 	}
 	return h.taxDeductions, nil
-}
-
-func (h MockTax) TaxRatesIncome(finalIncome float64) (TaxRate, error) {
-	if h.errorTaxRate != nil {
-		return h.taxRate, h.errorTaxRate
-	}
-	return h.taxRate, nil
 }
 
 func (h MockTax) CalculationHandler(echo.Context) error {
@@ -68,6 +60,8 @@ func (h MockTax) TaxRates() ([]TaxRate, error) {
 
 func TestCalculationHandler_Success(t *testing.T) {
 	e := echo.New()
+	e.Validator = helper.NewValidator()
+
 	body := `{
 				"totalIncome": 500000.0,
 				"wht": 100.0,
@@ -109,6 +103,8 @@ func TestCalculationHandler_Success(t *testing.T) {
 func TestCalculationHandler_BadRequest(t *testing.T) {
 	t.Run("tax with holding is 0 should retrun bad request", func(t *testing.T) {
 		e := echo.New()
+		e.Validator = helper.NewValidator()
+
 		body := `{
 				"totalIncome": 500000.0,
 				"wht": 0.0,
@@ -148,6 +144,8 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 	t.Run("tax with holding over than total income should retrun badRequest", func(t *testing.T) {
 		e := echo.New()
+		e.Validator = helper.NewValidator()
+
 		body := `{
 				"totalIncome": 500000.0,
 				"wht": 500001.0,
@@ -169,6 +167,8 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 	t.Run("worng json body should retrun bad request", func(t *testing.T) {
 		e := echo.New()
+		e.Validator = helper.NewValidator()
+
 		body := "{"
 
 		req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
@@ -186,6 +186,8 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 	t.Run("Tax Deduction By Type Error should retrun internal error", func(t *testing.T) {
 		e := echo.New()
+		e.Validator = helper.NewValidator()
+
 		body := `{
 			"totalIncome": 500000.0,
 			"wht": 500001.0,
@@ -210,6 +212,8 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 	t.Run("Tax Rate Error should return internal error", func(t *testing.T) {
 		e := echo.New()
+		e.Validator = helper.NewValidator()
+
 		body := `{
 				"totalIncome": 500000.0,
 				"wht": 1000.0,
@@ -424,6 +428,7 @@ func TestMaxDeduct(t *testing.T) {
 func TestCalculationCSV_Success(t *testing.T) {
 
 	e := echo.New()
+	e.Validator = helper.NewValidator()
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -459,13 +464,10 @@ func TestCalculationCSV_Success(t *testing.T) {
 			{MaxDeductionAmount: 100000, TaxAllowanceType: "donation"},
 		},
 	})
-	if err := h.CalculationCSV(c); err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
+	err := h.CalculationCSV(c)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status OK, got %v", rec.Code)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
 
 }
 
@@ -485,7 +487,7 @@ func TestCalculationCSV_Failure(t *testing.T) {
 			expectedIncome: 0,
 			expectedWht:    0,
 			expectedAmount: 0,
-			expectedErr:    helper.ErrorMessage{Message: "header incorrect"},
+			expectedErr:    helper.ErrorMessage{Message: "Invalid Header"},
 		},
 		{
 			name:           "Empty totalIncone",
@@ -516,6 +518,7 @@ func TestCalculationCSV_Failure(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			e := echo.New()
+			e.Validator = helper.NewValidator()
 
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
@@ -540,6 +543,7 @@ func TestCalculationCSV_Failure(t *testing.T) {
 
 	t.Run("Failed Get Tax Deduction By Type", func(t *testing.T) {
 		e := echo.New()
+		e.Validator = helper.NewValidator()
 
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)

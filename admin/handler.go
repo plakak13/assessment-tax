@@ -16,7 +16,7 @@ type Handler struct {
 }
 
 type Storer interface {
-	UpdateTaxDeduction(s postgres.SettingTaxDeduction) sql.Result
+	UpdateTaxDeduction(s postgres.SettingTaxDeduction) (sql.Result, error)
 	TaxDeductionByType(allowanceTypes []string) ([]tax.TaxDeduction, error)
 }
 
@@ -25,38 +25,47 @@ func New(db Storer) *Handler {
 }
 
 func (h *Handler) AdminHandler(c echo.Context) error {
-	payload := new(Setting)
+	sp := new(Setting)
+	param := c.Param("type")
 
-	err := c.Bind(payload)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, err.Error())
+	if err := c.Bind(sp); err != nil {
+		return helper.FailedHandler(c, "Invalid JSON", http.StatusBadRequest)
 	}
 
-	tRows, err := h.store.TaxDeductionByType([]string{"personal"})
+	err := c.Validate(sp)
+
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
+		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 
-	if tRows[0].AdminOverrideMax < payload.Amount {
+	tRows, err := h.store.TaxDeductionByType([]string{param})
+	if err != nil {
+		return helper.FailedHandler(c, err.Error())
+	}
+
+	if tRows[0].AdminOverrideMax < sp.Amount {
 		msg := fmt.Sprintf("ยอดที่กำหนดมีค่าเกินกว่า (%.1f) ที่สามารถกำหนดได้", tRows[0].AdminOverrideMax)
-		return c.JSON(http.StatusBadRequest, msg)
+		return helper.FailedHandler(c, msg, http.StatusBadRequest)
 	}
 
-	if tRows[0].DefaultAmount > payload.Amount {
-		msg := fmt.Sprintf("กรุณากำหนดมีค่าเกินกว่า (%.1f) ", tRows[0].DefaultAmount)
-		return c.JSON(http.StatusBadRequest, msg)
+	if tRows[0].MinAmount > sp.Amount {
+		msg := fmt.Sprintf("กรุณากำหนดมีค่าเกินกว่า (%.1f)", tRows[0].MinAmount)
+		return helper.FailedHandler(c, msg, http.StatusBadRequest)
 	}
 
 	s := postgres.SettingTaxDeduction{
 		ID:     tRows[0].ID,
-		Amount: payload.Amount,
+		Amount: sp.Amount,
 	}
 
-	row := h.store.UpdateTaxDeduction(s)
+	row, err := h.store.UpdateTaxDeduction(s)
+	if err != nil {
+		return helper.FailedHandler(c, err.Error())
+	}
 	_, err = row.RowsAffected()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
+		return helper.FailedHandler(c, err.Error())
 	}
 
-	return helper.SuccessHandler(c, SettingResponse{PersonalDeduction: payload.Amount})
+	return helper.SuccessHandler(c, SettingResponse{PersonalDeduction: sp.Amount})
 }
