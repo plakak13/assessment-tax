@@ -6,9 +6,9 @@ type Allowance struct {
 }
 
 type TaxCalculation struct {
-	TotalIncome    float64     `json:"totalIncome" example:"1000.00"`
+	TotalIncome    float64     `json:"totalIncome" validate:"required" example:"1000.00"`
 	WithHoldingTax float64     `json:"wht" example:"0.0"`
-	Allowances     []Allowance `json:"allowances"`
+	Allowances     []Allowance `json:"allowances" validate:"required"`
 }
 
 type TaxDeduction struct {
