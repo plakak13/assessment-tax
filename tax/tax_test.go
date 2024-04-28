@@ -107,7 +107,7 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 
 		body := `{
 				"totalIncome": 500000.0,
-				"wht": 0.0,
+				"wht": -1.0,
 				"allowances": [
 					{"allowanceType": "donation","amount": 0.0}
 				]
@@ -303,17 +303,6 @@ func TestValidation(t *testing.T) {
 		taxCalculation TaxCalculation
 		expectedError  error
 	}{
-		{
-			name: "Invalid withholding tax",
-			taxDeducts: []TaxDeduction{
-				{TaxAllowanceType: "personal", MinAmount: 10000},
-			},
-			taxCalculation: TaxCalculation{
-				WithHoldingTax: 0,
-				TotalIncome:    100000,
-			},
-			expectedError: errors.New("invalid withholding tax amount"),
-		},
 		{
 			name: "Invalid withholding tax - negative",
 			taxDeducts: []TaxDeduction{
