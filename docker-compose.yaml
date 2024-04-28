@@ -12,14 +12,3 @@ services:
     ports:
       - '5432:5432'
   
-  api:
-    build: .
-    ports:
-      - "${PORT}:1323"
-    environment:
-      PORT: ${PORT}
-      DATABASE_URL: ${DATABASE_URL}
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-    depends_on:
-      - postgres

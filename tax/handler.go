@@ -166,7 +166,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 
 func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
 
-	if t.WithHoldingTax <= 0 || t.WithHoldingTax > t.TotalIncome {
+	if t.WithHoldingTax < 0 || t.WithHoldingTax > t.TotalIncome {
 		return errors.New("invalid withholding tax amount")
 	}
 
@@ -181,6 +181,10 @@ func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
 }
 
 func calculateTaxPayable(income float64, wht float64, rate TaxRate) float64 {
+
+	if math.Signbit(income) && wht == 0 {
+		return 0
+	}
 
 	baseTax := 150000.0
 	taxPercent := (rate.TaxRate / 100)
@@ -284,7 +288,7 @@ func taxLevelDetails(taxRates []TaxRate, rIndex int, taxFund float64) []TaxLevel
 func refundTax(taxFund float64) (float64, float64) {
 	taxRefund := 0.0
 
-	if math.Signbit(taxFund) {
+	if math.Signbit(taxFund) || taxFund == 0 {
 		taxRefund = math.Abs(taxFund)
 		taxFund = 0.0
 	}
