@@ -144,8 +144,7 @@ func TestAdminHandler_Integration(t *testing.T) {
 
 		settingJSON, _ := json.Marshal(settingRequest)
 		res := clientRequest(http.MethodPost, uri("admin", "deductions", "personal"), bytes.NewBuffer(settingJSON), true)
-		var result admin.SettingResponse
-
+		result := make(map[string]interface{})
 		err := res.Decode(&result)
 
 		assert.NoError(t, err)
@@ -160,7 +159,7 @@ func TestAdminHandler_Integration(t *testing.T) {
 
 		settingJSON, _ := json.Marshal(settingRequest)
 		res := clientRequest(http.MethodPost, uri("admin", "deductions", "personal"), bytes.NewBuffer(settingJSON), true)
-		var result admin.SettingResponse
+		result := make(map[string]interface{})
 
 		err := res.Decode(&result)
 
