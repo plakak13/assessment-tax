@@ -171,9 +171,6 @@ func validationTax(taxDeducts []TaxDeduction, t TaxCalculation) error {
 	}
 
 	for _, v := range t.Allowances {
-		// if v.AllowanceType == "personal" {
-		// 	continue
-		// }
 		for _, vt := range taxDeducts {
 			if vt.TaxAllowanceType == v.AllowanceType && vt.MinAmount > v.Amount {
 				return fmt.Errorf("amount for %s allowance is below the minimum threshold", v.AllowanceType)
