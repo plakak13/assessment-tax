@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -23,6 +26,10 @@ func main() {
 	}
 
 	e := echo.New()
+
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+
 	e.Validator = helper.NewValidator()
 
 	handler := tax.New(p)
@@ -39,15 +46,25 @@ func main() {
 	a.POST("/deductions/:type", adminHandler.AdminHandler)
 
 	port := fmt.Sprintf(":%s", os.Getenv("PORT"))
-	e.Logger.Fatal(e.Start(port))
 
 	go func() {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-		<-sig
-		fmt.Println("shutting down the server")
-		os.Exit(0)
+		if err := e.Start(port); err != nil && err != http.ErrServerClosed {
+			e.Logger.Info("shutting down the server")
+		}
 	}()
+
+	shitdown := make(chan os.Signal, 1)
+	signal.Notify(shitdown, os.Interrupt, syscall.SIGTERM)
+	<-shitdown
+	fmt.Println("shutting down the server")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := e.Shutdown(ctx); err != nil {
+		e.Logger.Fatal(err)
+	}
+
 }
 
 func authenticate(username, password string, c echo.Context) (bool, error) {

@@ -57,7 +57,7 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 		return helper.FailedHandler(c, err.Error())
 	}
 
-	if err = validation(tds, *tc); err != nil {
+	if err = validationTax(tds, *tc); err != nil {
 		return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 	}
 
@@ -74,13 +74,13 @@ func (h *Handler) CalculationHandler(c echo.Context) error {
 
 	rIndex := taxRateIndex(taxRates, income)
 
-	taxFund := calculateTaxPayable(income, tc.WithHoldingTax, taxRates[rIndex])
+	taxPayable := calculateTaxPayable(income, tc.WithHoldingTax, taxRates[rIndex])
 
-	taxRefund, taxFund := refundTax(taxFund)
-	taxLevels := taxLevelDetails(taxRates, rIndex, taxFund)
+	taxRefund, taxPayable := refundTax(taxPayable)
+	taxLevels := taxLevelDetails(taxRates, rIndex, taxPayable)
 
 	return helper.SuccessHandler(c, CalculationResponse{
-		Tax:       math.Round(taxFund*100) / 100,
+		Tax:       math.Round(taxPayable*100) / 100,
 		TaxRefund: math.Round(taxRefund*100) / 100,
 		TaxLevel:  taxLevels,
 	})
@@ -132,7 +132,7 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 			},
 		}
 
-		if err = validation(tds, tc); err != nil {
+		if err = validationTax(tds, tc); err != nil {
 			return helper.FailedHandler(c, err.Error(), http.StatusBadRequest)
 		}
 
@@ -153,26 +153,29 @@ func (h *Handler) CalculationCSV(c echo.Context) error {
 
 		rIndex := taxRateIndex(taxRates, income)
 
-		taxFund := calculateTaxPayable(income, wht, taxRates[rIndex])
+		taxPayable := calculateTaxPayable(income, wht, taxRates[rIndex])
 
 		ttis = append(ttis, TaxWithTotalIncome{
 			TotalIncome: totalIncome,
-			TaxAmount:   taxFund,
+			TaxAmount:   taxPayable,
 		})
 	}
 
 	return helper.SuccessHandler(c, ttis)
 }
 
-func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
+func validationTax(taxDeducts []TaxDeduction, t TaxCalculation) error {
 
-	if t.WithHoldingTax <= 0 || t.WithHoldingTax > t.TotalIncome {
+	if t.WithHoldingTax < 0 || t.WithHoldingTax > t.TotalIncome {
 		return errors.New("invalid withholding tax amount")
 	}
 
 	for _, v := range t.Allowances {
+		// if v.AllowanceType == "personal" {
+		// 	continue
+		// }
 		for _, vt := range taxDeducts {
-			if vt.TaxAllowanceType == v.AllowanceType && v.Amount < vt.MinAmount {
+			if vt.TaxAllowanceType == v.AllowanceType && vt.MinAmount > v.Amount {
 				return fmt.Errorf("amount for %s allowance is below the minimum threshold", v.AllowanceType)
 			}
 		}
@@ -182,10 +185,14 @@ func validation(taxDeducts []TaxDeduction, t TaxCalculation) error {
 
 func calculateTaxPayable(income float64, wht float64, rate TaxRate) float64 {
 
+	if math.Signbit(income) && wht == 0 {
+		return 0
+	}
+
 	baseTax := 150000.0
 	taxPercent := (rate.TaxRate / 100)
-	taxfund := ((income - baseTax) * taxPercent) - wht
-	return taxfund
+	taxPayable := ((income - baseTax) * taxPercent) - wht
+	return taxPayable
 }
 
 func maxDeduct(tds []TaxDeduction, alls []Allowance) float64 {
@@ -195,6 +202,9 @@ func maxDeduct(tds []TaxDeduction, alls []Allowance) float64 {
 			maxDeduct += td.MaxDeductionAmount
 		}
 		for _, a := range alls {
+			if a.AllowanceType == "personal" {
+				continue
+			}
 			if td.TaxAllowanceType == a.AllowanceType {
 				if td.MaxDeductionAmount >= a.Amount {
 					maxDeduct += a.Amount
@@ -284,7 +294,7 @@ func taxLevelDetails(taxRates []TaxRate, rIndex int, taxFund float64) []TaxLevel
 func refundTax(taxFund float64) (float64, float64) {
 	taxRefund := 0.0
 
-	if math.Signbit(taxFund) {
+	if math.Signbit(taxFund) || taxFund == 0 {
 		taxRefund = math.Abs(taxFund)
 		taxFund = 0.0
 	}

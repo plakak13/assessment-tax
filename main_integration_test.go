@@ -1,3 +1,5 @@
+//go:build integration
+
 package main
 
 import (
@@ -89,7 +91,7 @@ func TestCalculateTax(t *testing.T) {
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 	})
 
-	t.Run("calculate tax withhoding is zero", func(t *testing.T) {
+	t.Run("calculate withhoding tax is zero", func(t *testing.T) {
 		calRequest := tax.TaxCalculation{
 			TotalIncome:    500000,
 			WithHoldingTax: 0,
@@ -108,7 +110,7 @@ func TestCalculateTax(t *testing.T) {
 		calculateJSON, _ := json.Marshal(calRequest)
 		res := clientRequest(http.MethodPost, uri("tax", "calculations"), bytes.NewBuffer(calculateJSON), false)
 
-		assert.Equal(t, http.StatusBadRequest, res.StatusCode)
+		assert.Equal(t, http.StatusOK, res.StatusCode)
 	})
 
 	t.Run("calculate tax withhoding more than total income", func(t *testing.T) {
