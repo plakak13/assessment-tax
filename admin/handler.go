@@ -67,5 +67,13 @@ func (h *Handler) AdminHandler(c echo.Context) error {
 		return helper.FailedHandler(c, err.Error())
 	}
 
-	return helper.SuccessHandler(c, SettingResponse{PersonalDeduction: sp.Amount})
+	response := make(map[string]interface{})
+
+	if param == "personal" {
+		response["personalDeduction"] = sp.Amount
+	} else {
+		response["kReceipt"] = sp.Amount
+	}
+
+	return helper.SuccessHandler(c, response)
 }

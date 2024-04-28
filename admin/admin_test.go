@@ -39,7 +39,7 @@ func (m MockAdmin) TaxDeductionByType([]string) ([]tax.TaxDeduction, error) {
 	return m.taxDeductions, nil
 }
 
-func TestAdminHandler_Success(t *testing.T) {
+func TestAdminHandler_Personal_Type_Success(t *testing.T) {
 	e := echo.New()
 	e.Validator = helper.NewValidator()
 
@@ -63,6 +63,40 @@ func TestAdminHandler_Success(t *testing.T) {
 				AdminOverrideMax:   100000,
 				MinAmount:          10000,
 				TaxAllowanceType:   "personal",
+			},
+		},
+		sqlResult: sqlmock.NewResult(0, 1),
+	})
+
+	err := h.AdminHandler(c)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAdminHandler_K_Receipt_Type_Success(t *testing.T) {
+	e := echo.New()
+	e.Validator = helper.NewValidator()
+
+	body := `{"amount":60000}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/deductions/:type", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	c := e.NewContext(req, rec)
+
+	c.SetPath("/admin/deduction/:type")
+	c.SetParamNames("type")
+	c.SetParamValues("k-receipt")
+
+	h := New(MockAdmin{
+		taxDeductions: []tax.TaxDeduction{
+			{
+				ID:                 2,
+				MaxDeductionAmount: 100000,
+				DefaultAmount:      50000,
+				AdminOverrideMax:   100000,
+				MinAmount:          0,
+				TaxAllowanceType:   "k-receipt",
 			},
 		},
 		sqlResult: sqlmock.NewResult(0, 1),
