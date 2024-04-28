@@ -26,6 +26,10 @@ func main() {
 	}
 
 	e := echo.New()
+
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+
 	e.Validator = helper.NewValidator()
 
 	handler := tax.New(p)

@@ -237,7 +237,7 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 	})
 }
 
-func TestCalculate(t *testing.T) {
+func TestCalculatePayable(t *testing.T) {
 	type test struct {
 		name          string
 		expected      float64
@@ -285,6 +285,25 @@ func TestCalculate(t *testing.T) {
 				TaxRate:          10,
 			},
 		},
+		{
+			name:        "withholding tax 0 and total income not exceeding the tax threshold",
+			expected:    0.0,
+			totalIncome: -10000.0,
+			wht:         0.0,
+			taxDeductions: []TaxDeduction{
+				{
+					MaxDeductionAmount: 100000.0,
+					DefaultAmount:      50000.0,
+					AdminOverrideMax:   50000.0,
+					MinAmount:          0.00,
+					TaxAllowanceType:   "k-reciept",
+				},
+			},
+			taxRate: TaxRate{
+				LowerBoundIncome: 0,
+				TaxRate:          0,
+			},
+		},
 	}
 
 	for _, val := range tests {
@@ -295,7 +314,7 @@ func TestCalculate(t *testing.T) {
 	}
 }
 
-func TestValidation(t *testing.T) {
+func TestValidationTax(t *testing.T) {
 
 	tests := []struct {
 		name           string
@@ -354,7 +373,7 @@ func TestValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result := validation(test.taxDeducts, test.taxCalculation)
+			result := validationTax(test.taxDeducts, test.taxCalculation)
 			assert.Equal(t, test.expectedError, result)
 		})
 	}
@@ -396,6 +415,17 @@ func TestMaxDeduct(t *testing.T) {
 				{AllowanceType: "donation", Amount: 200000},
 			},
 			expectedDeduct: 160000,
+		},
+		{
+			name: "personal allowance",
+			tds: []TaxDeduction{
+				{TaxAllowanceType: "personal", MaxDeductionAmount: 60000},
+				{TaxAllowanceType: "donation", MaxDeductionAmount: 100000},
+			},
+			alls: []Allowance{
+				{AllowanceType: "personal", Amount: 200000},
+			},
+			expectedDeduct: 60000,
 		},
 		{
 			name:           "No allowances",
