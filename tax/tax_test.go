@@ -20,9 +20,6 @@ type MockTax struct {
 	taxDeductions     []TaxDeduction
 	errorTaxDeduction error
 	errorTaxRate      error
-	errorBindContext  error
-	errorCalculateCSV error
-	errorInvalidWHT   error
 }
 
 func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, error) {
@@ -32,20 +29,9 @@ func (h MockTax) TaxDeductionByType(allowanceTypes []string) ([]TaxDeduction, er
 	return h.taxDeductions, nil
 }
 
-func (h MockTax) CalculationHandler(echo.Context) error {
-	if h.errorBindContext != nil {
-		return h.errorBindContext
-	}
-	return nil
-}
-
 func (h MockTax) CalculationCSV() error {
-	if h.errorCalculateCSV != nil {
-		return h.errorCalculateCSV
-	}
-
-	if h.errorInvalidWHT != nil {
-		return h.errorInvalidWHT
+	if h.errorTaxRate != nil {
+		return h.errorTaxRate
 	}
 
 	return nil
@@ -165,6 +151,26 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	})
 
+	t.Run("wrong json body should retrun bad request", func(t *testing.T) {
+		e := echo.New()
+		e.Validator = helper.NewValidator()
+
+		body := `{
+			"wht": 0
+		}`
+
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		h := New(&MockTax{})
+		err := h.CalculationHandler(c)
+
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, "Field TotalIncome is required, Field Allowances is required", jsonMashal(rec.Body.Bytes()).Message)
+	})
+
 	t.Run("worng json body should retrun bad request", func(t *testing.T) {
 		e := echo.New()
 		e.Validator = helper.NewValidator()
@@ -175,13 +181,12 @@ func TestCalculationHandler_BadRequest(t *testing.T) {
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		h := New(&MockTax{
-			errorBindContext: errors.New("error bind"),
-		})
+		h := New(&MockTax{})
 		err := h.CalculationHandler(c)
 
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, "Invalid JSON", jsonMashal(rec.Body.Bytes()).Message)
 	})
 
 	t.Run("Tax Deduction By Type Error should retrun internal error", func(t *testing.T) {
@@ -493,44 +498,34 @@ func TestCalculationCSV_Success(t *testing.T) {
 func TestCalculationCSV_Failure(t *testing.T) {
 
 	tests := []struct {
-		name           string
-		csvContent     string
-		expectedIncome float64
-		expectedWht    float64
-		expectedAmount float64
-		expectedErr    helper.ErrorMessage
+		name        string
+		csvContent  string
+		expectedErr string
 	}{
 		{
-			name:           "Invalid CSV Data",
-			csvContent:     "InvalidCSVData",
-			expectedIncome: 0,
-			expectedWht:    0,
-			expectedAmount: 0,
-			expectedErr:    helper.ErrorMessage{Message: "Invalid Header"},
+			name:        "Invalid CSV data",
+			csvContent:  "InvalidCSVData",
+			expectedErr: "Invalid Header",
 		},
 		{
-			name:           "Empty totalIncone",
-			csvContent:     "totalIncome,wht,donation\n ,1000,500",
-			expectedIncome: 0,
-			expectedWht:    0,
-			expectedAmount: 0,
-			expectedErr:    helper.ErrorMessage{Message: "total income can not be string or empty"},
+			name:        "Empty totalIncone",
+			csvContent:  "totalIncome,wht,donation\n ,1000,500",
+			expectedErr: "total income can not be string or empty",
 		},
 		{
-			name:           "Empty with holding tax",
-			csvContent:     "totalIncome,wht,donation\n 10000.0, ,500",
-			expectedIncome: 0,
-			expectedWht:    0,
-			expectedAmount: 0,
-			expectedErr:    helper.ErrorMessage{Message: "tax with holding (twh) can not be string or empty"},
+			name:        "Empty with holding tax",
+			csvContent:  "totalIncome,wht,donation\n10000.0, ,500",
+			expectedErr: "tax with holding (twh) can not be string or empty",
 		},
 		{
-			name:           "invalid donation field ",
-			csvContent:     "totalIncome,wht,donation\n 10000,1000,abc",
-			expectedIncome: 0,
-			expectedWht:    0,
-			expectedAmount: 0,
-			expectedErr:    helper.ErrorMessage{Message: "donation can not be string or empty"},
+			name:        "Invalid donation field ",
+			csvContent:  "totalIncome,wht,donation\n10000,1000,abc",
+			expectedErr: "donation can not be string or empty",
+		},
+		{
+			name:        "Invalid withholding tax field ",
+			csvContent:  "totalIncome,wht,donation\n10000,100000,0",
+			expectedErr: "invalid withholding tax amount",
 		},
 	}
 
@@ -551,14 +546,70 @@ func TestCalculationCSV_Failure(t *testing.T) {
 			c := e.NewContext(req, rec)
 
 			h := New(&MockTax{
-				errorInvalidWHT: errors.New("err"),
+				errorTaxRate: errors.New(test.expectedErr),
 			})
 
-			h.CalculationCSV(c)
-
+			err := h.CalculationCSV(c)
+			assert.NoError(t, err)
 			assert.Equal(t, http.StatusBadRequest, rec.Code)
+			assert.Equal(t, test.expectedErr, jsonMashal(rec.Body.Bytes()).Message)
 		})
 	}
+
+	t.Run("No File Upload", func(t *testing.T) {
+		e := echo.New()
+		e.Validator = helper.NewValidator()
+
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations/upload-csv", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		h := New(&MockTax{})
+
+		err := h.CalculationCSV(c)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+		assert.Equal(t, "http: no such file", jsonMashal(rec.Body.Bytes()).Message)
+	})
+
+	t.Run("Empty CSV Data", func(t *testing.T) {
+		reader := strings.NewReader("")
+		recs, err := readCSVRecords(reader)
+
+		assert.NoError(t, err)
+		assert.Nil(t, recs)
+
+	})
+
+	t.Run("Failed Get Tax Rate", func(t *testing.T) {
+		e := echo.New()
+		e.Validator = helper.NewValidator()
+
+		body := &bytes.Buffer{}
+		writer := multipart.NewWriter(body)
+		part, _ := writer.CreateFormFile("file", "test.csv")
+		part.Write([]byte("totalIncome,wht,donation\n10000,1000,0"))
+		writer.Close()
+
+		req := httptest.NewRequest(http.MethodPost, "/tax/calculations/upload-csv", body)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		h := New(&MockTax{
+			errorTaxRate: errors.New("error get tax rates"),
+		})
+
+		err := h.CalculationCSV(c)
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusInternalServerError, rec.Code)
+		assert.Equal(t, "error get tax rates", jsonMashal(rec.Body.Bytes()).Message)
+	})
 
 	t.Run("Failed Get Tax Deduction By Type", func(t *testing.T) {
 		e := echo.New()
@@ -579,8 +630,9 @@ func TestCalculationCSV_Failure(t *testing.T) {
 			errorTaxDeduction: errors.New("Tax Deduction Failed"),
 		})
 
-		h.CalculationCSV(c)
+		err := h.CalculationCSV(c)
 
+		assert.NoError(t, err)
 		assert.Equal(t, http.StatusInternalServerError, rec.Code)
 		assert.Equal(t, "Tax Deduction Failed", jsonMashal(rec.Body.Bytes()).Message)
 	})
@@ -643,7 +695,7 @@ func TestRefundTax(t *testing.T) {
 			expectedOutput: []float64{0, 0},
 		},
 		{
-			name:           "Nagative input",
+			name:           "Negative input",
 			input:          -10000,
 			expectedOutput: []float64{0, 10000},
 		},
